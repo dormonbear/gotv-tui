@@ -55,7 +55,7 @@ func main() {
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion()}
 	var images io.Writer // kitty graphics share the TUI's output, one writer at a time
 	if term.KittyGraphics() {
-		lw := term.NewLockedWriter(os.Stdout)
+		lw := term.NewLockedFile(os.Stdout)
 		images = lw
 		opts = append(opts, tea.WithOutput(lw))
 	}

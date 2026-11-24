@@ -26,19 +26,25 @@ func KittyGraphics() bool {
 		os.Getenv("TERM") == "xterm-kitty" || os.Getenv("KITTY_WINDOW_ID") != ""
 }
 
-// LockedWriter serialises the TUI's frames and image uploads on one terminal.
-type LockedWriter struct {
+// LockedFile serialises the TUI's frames and image uploads on one terminal. It is
+// still a terminal file (Fd, Read, Close pass through), so the TUI keeps reading the
+// window size and resize events from it.
+type LockedFile struct {
 	mu sync.Mutex
-	w  io.Writer
+	f  *os.File
 }
 
-func NewLockedWriter(w io.Writer) *LockedWriter { return &LockedWriter{w: w} }
+func NewLockedFile(f *os.File) *LockedFile { return &LockedFile{f: f} }
 
-func (l *LockedWriter) Write(p []byte) (int, error) {
+func (l *LockedFile) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.w.Write(p)
+	return l.f.Write(p)
 }
+
+func (l *LockedFile) Read(p []byte) (int, error) { return l.f.Read(p) }
+func (l *LockedFile) Close() error               { return l.f.Close() }
+func (l *LockedFile) Fd() uintptr                { return l.f.Fd() }
 
 // SendImage uploads png as image id with a virtual placement of cols x rows cells,
 // replacing any earlier image with that id (placeholders on screen update in place).
