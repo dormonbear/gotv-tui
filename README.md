@@ -25,6 +25,10 @@ The radar is drawn as a real image where the terminal supports it, else as text:
 
 `GOTV_TUI_GRAPHICS=kitty|iterm|sixel|off` overrides the detection.
 
+Opened in Terminal.app (e.g. by a double-click on macOS) or the old Windows console,
+gotv-tui reopens itself in the best installed terminal: Ghostty, kitty, WezTerm or
+iTerm2 on macOS, Windows Terminal on Windows. `GOTV_TUI_RELAUNCH=0` keeps it where it is.
+
 ## Install
 
 macOS / Linux:
