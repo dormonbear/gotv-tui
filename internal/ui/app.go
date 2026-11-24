@@ -47,6 +47,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.list.w = a.w
 		}
 		return a, nil
+	case tea.MouseMsg:
+		if a.match != nil {
+			return a, a.match.update(msg)
+		}
+		return a, nil
 	case tea.KeyMsg:
 		k := msg.String()
 		if k == "ctrl+c" {

@@ -28,6 +28,11 @@ func (r *Raster) ToPx(x, y float64) (float64, float64) {
 	return ((x-r.ov.PosX)/r.ov.Scale - r.box.X) * r.k, ((r.ov.PosY-y)/r.ov.Scale - r.box.Y) * r.ky
 }
 
+// RadarAt maps dot coordinates back to 1024 radar space.
+func (r *Raster) RadarAt(px, py float64) (float64, float64) {
+	return r.box.X + px/r.k, r.box.Y + py/r.ky
+}
+
 // NormPx maps 0..1 radar coords to dot coordinates.
 func (r *Raster) NormPx(nx, ny float64) (float64, float64) {
 	return (nx*1024 - r.box.X) * r.k, (ny*1024 - r.box.Y) * r.ky

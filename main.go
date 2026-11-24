@@ -50,7 +50,7 @@ func main() {
 	if arg != "" {
 		url = feeds.NormalizeURL(arg)
 	}
-	if _, err := tea.NewProgram(ui.New(url), tea.WithAltScreen()).Run(); err != nil {
+	if _, err := tea.NewProgram(ui.New(url), tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

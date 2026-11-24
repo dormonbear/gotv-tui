@@ -34,11 +34,13 @@ type (
 
 // levelMap caches one framed radar level for a size.
 type levelMap struct {
-	lower bool
-	w, h  int
-	view  radar.Box
-	r     *radar.Raster
-	base  *radar.Base
+	lower  bool
+	w, h   int
+	view   radar.Box
+	ox, oy int // raster's top-left cell inside the map block
+	sx, sy int // ... and on screen, for mouse hits
+	r      *radar.Raster
+	base   *radar.Base
 }
 
 type matchModel struct {
@@ -55,6 +57,9 @@ type matchModel struct {
 	loading string  // map being loaded
 	aspect  float64 // terminal cell height / width
 	zoom    float64 // camera: 1 = whole map
+	zoomTo  float64 // zoom animates towards this
+	anchor  anchor  // radar point held still while zooming
+	moving  bool    // zoom animation running
 	camX    float64 // camera centre, 1024 radar space
 	camY    float64
 	w, h    int
@@ -137,7 +142,11 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	case tickMsg:
 		return tick()
 	case tea.KeyMsg:
-		m.cameraKey(msg.String())
+		return m.cameraKey(msg.String())
+	case tea.MouseMsg:
+		return m.mouse(msg)
+	case animMsg:
+		return m.step()
 	}
 	return nil
 }
@@ -232,7 +241,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 		}
 	}
 	var boxes []string
-	for _, lv := range m.levels {
+	for i, lv := range m.levels {
 		lines := radar.Draw(lv.r, lv.base, m.st, radar.Opts{
 			Kills: m.kills, Nums: nums, Now: time.Now(), Lower: lv.lower,
 			LowerBelow: a.Overview.LowerBelow, Sites: radar.SitesOn(a.Map, lv.lower, a.Overview.Sites),
@@ -244,7 +253,14 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			}
 			lines = append([]string{dim(name)}, lines...)
 		}
-		boxes = append(boxes, frame.Render(strings.Join(lines, "\n")))
+		box := frame.Render(strings.Join(lines, "\n"))
+		lv.ox, lv.oy = 1, 1+titleRows // inside the border and title
+		if stacked {
+			lv.oy += i * lipgloss.Height(box)
+		} else {
+			lv.ox += i * lipgloss.Width(box)
+		}
+		boxes = append(boxes, box)
 	}
 	if stacked {
 		return lipgloss.JoinVertical(lipgloss.Center, boxes...)
@@ -278,51 +294,19 @@ func (m *matchModel) view() string {
 		left[i] = ansi.Truncate(left[i], leftW, "")
 	}
 	leftBlock := lipgloss.NewStyle().Width(leftW).Height(body).MaxHeight(body).Render(strings.Join(left, "\n"))
-	mapBlock := lipgloss.Place(mapW, body, lipgloss.Center, lipgloss.Center, m.mapView(mapW, body, nums))
+	mapStr := m.mapView(mapW, body, nums)
+	mapBlock := lipgloss.Place(mapW, body, lipgloss.Center, lipgloss.Center, mapStr)
+	// where Place put the map: lipgloss centres with gap - round(gap/2) before it
+	before := func(gap int) int { return gap - int(math.Round(float64(gap)*0.5)) }
+	offX := leftW + 1 + before(mapW-lipgloss.Width(mapStr))
+	offY := before(body - lipgloss.Height(mapStr))
+	for _, lv := range m.levels {
+		lv.sx, lv.sy = offX+lv.ox, offY+lv.oy
+	}
 	zoom := ""
-	if m.zoom > 1 {
+	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · +/- zoom · ←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
+	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · wheel/+- zoom · ←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, " ", mapBlock) + "\n" + footer
-}
-
-const (
-	zoomStep = 1.25
-	panStep  = 0.2 // of the visible width/height
-)
-
-func (m *matchModel) resetCamera() {
-	m.zoom = 1
-	m.camX, m.camY = m.box.Center()
-}
-
-// camera is the radar area on screen. Both levels share it so they stay aligned.
-func (m *matchModel) camera() radar.Box {
-	v := m.box.View(m.camX, m.camY, m.zoom)
-	m.camX, m.camY = v.Center() // clamped at the map edge: panning back starts right away
-	return v
-}
-
-func (m *matchModel) cameraKey(k string) {
-	if m.assets == nil {
-		return
-	}
-	v := m.camera()
-	switch k {
-	case "+", "=":
-		m.zoom = min(radar.MaxZoom, m.zoom*zoomStep)
-	case "-", "_":
-		m.zoom = max(1, m.zoom/zoomStep)
-	case "0":
-		m.resetCamera()
-	case "left", "h":
-		m.camX -= v.W * panStep
-	case "right", "l":
-		m.camX += v.W * panStep
-	case "up", "k":
-		m.camY -= v.H * panStep
-	case "down", "j":
-		m.camY += v.H * panStep
-	}
 }
