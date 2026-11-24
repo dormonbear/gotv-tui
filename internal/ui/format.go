@@ -158,7 +158,8 @@ func pad(s string, w int) string { // pad/cut a plain string to exactly w cells
 }
 
 // TeamTable renders the title row and one row per player of side.
-func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[string]int) []string {
+// The followed player's row (focus, lowercase) is framed; see framed.
+func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[string]int, focus string) []string {
 	c := sideColor(side)
 	out := []string{term.Fg(c) + boldOn + title(side, t) + reset + dim(columns)}
 	num := func(p gotv.Player) int {
@@ -171,6 +172,10 @@ func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[stri
 		badge := " " + " " + " "
 		if n := num(p); n < 9 {
 			badge = fmt.Sprintf(" %d ", n)
+		}
+		focused := strings.ToLower(p.Name) == focus
+		if focused { // a white bar in the badge's left padding marks the row
+			badge = term.Fg(term.White) + "▌" + term.Fg(term.Black) + badge[1:]
 		}
 		badge = term.Bg(c) + term.Fg(term.Black) + badge + reset
 		kit := " "
@@ -199,6 +204,9 @@ func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[stri
 		if !p.Alive {
 			row = dimOn + row + reset
 		}
+		if focused {
+			row = framed(row)
+		}
 		out = append(out, row)
 	}
 	return out
@@ -220,4 +228,21 @@ func teamRows(side gotv.Side, players []gotv.Player, nums map[string]int) []gotv
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return num(rows[i]) < num(rows[j]) })
 	return rows
+}
+
+// rowWidth is how wide a framed scoreboard row is drawn (the table's width).
+const rowWidth = 76
+
+// frame: highlighted background with a white over- and underline, so the row reads
+// as boxed without extra lines (terminals without overline still get the rest).
+var frameOn = term.Bg(term.RGB{44, 54, 74}) + "\x1b[53;4;58;2;235;235;235m"
+
+// framed boxes a scoreboard row: the frame style across the whole table width, kept
+// on through the row's own colour resets.
+func framed(row string) string {
+	row = strings.ReplaceAll(row, reset, reset+frameOn)
+	if w := ansi.StringWidth(row); w < rowWidth {
+		row += strings.Repeat(" ", rowWidth-w)
+	}
+	return frameOn + row + reset
 }

@@ -54,3 +54,24 @@ func TestWinnerBanner(t *testing.T) {
 		t.Fatal("match banner should show once")
 	}
 }
+
+func TestFollowedPlayerRowIsFramed(t *testing.T) {
+	ps := []gotv.Player{{Name: "s1n", Side: gotv.T, Alive: true, HP: 100}, {Name: "JBa", Side: gotv.T, Alive: false}}
+	nums := PlayerNumbers(ps)
+	rows := TeamTable(gotv.T, gotv.Team{Name: "M80"}, ps, nums, "jba")
+	plainRow := plain(rows[1]) // JBa sorts first
+	if !strings.Contains(rows[1], "\x1b[53;4") || !strings.HasPrefix(plainRow, "▌1 ") {
+		t.Fatalf("followed row not framed: %q", rows[1])
+	}
+	if w := ansi.StringWidth(rows[1]); w != rowWidth {
+		t.Fatalf("framed row is %d wide, want the table's %d", w, rowWidth)
+	}
+	if strings.Contains(rows[2], "\x1b[53") || !strings.HasPrefix(plain(rows[2]), " 2 ") {
+		t.Fatalf("other row changed: %q", rows[2])
+	}
+	// columns stay aligned: the name starts at the same place on both rows
+	col := func(s, sub string) int { return ansi.StringWidth(s[:strings.Index(s, sub)]) }
+	if col(plain(rows[1]), "JBa") != col(plain(rows[2]), "s1n") {
+		t.Fatalf("misaligned:\n%q\n%q", plain(rows[1]), plain(rows[2]))
+	}
+}

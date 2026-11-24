@@ -346,7 +346,7 @@ func (m *matchModel) view() string {
 			for i, p := range teamRows(side.s, m.st.Players, nums) {
 				m.rowPlayer[top+i] = strings.ToLower(p.Name)
 			}
-			left = append(left, TeamTable(side.s, side.t, m.st.Players, nums)...)
+			left = append(left, TeamTable(side.s, side.t, m.st.Players, nums, m.focus)...)
 		}
 	}
 	left = append(left, "", bold("Game log"))
