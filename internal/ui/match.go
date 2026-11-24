@@ -57,7 +57,8 @@ type matchModel struct {
 	kills   []radar.KillMark
 	status  string
 	assets  *radar.Assets
-	box     radar.Box
+	box     radar.Box // the map's own extent
+	frame   radar.Box // box grown to the shape of the map area: what zoom 1 shows
 	levels  []*levelMap
 	loading string  // map being loaded
 	aspect  float64 // terminal cell height / width
@@ -80,6 +81,7 @@ type matchModel struct {
 	out      io.Writer
 	uploaded string // map whose radar images the terminal holds
 	sprites  spriteLayer
+	fx       fx
 	camX     float64 // camera centre, 1024 radar space
 	camY     float64
 	w, h     int
@@ -125,6 +127,7 @@ func (m *matchModel) close() { m.cancel() }
 
 // applyEvent appends to the log and tracks this round's kills for the map.
 func (m *matchModel) applyEvent(e gotv.Event, now time.Time) {
+	m.fx.onEvent(e, m.st, now)
 	m.log = append([]gotv.Event{e}, m.log...)
 	if len(m.log) > logLimit {
 		m.log = m.log[:logLimit]
@@ -142,6 +145,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	case stateMsg:
 		s := gotv.State(msg)
 		m.st = &s
+		m.fx.onState(m.st, time.Now())
 		m.direct()
 		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" {
 			m.loading = s.Map
@@ -162,6 +166,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		m.assets, m.levels = msg.a, nil
 		// both levels use the upper radar's crop so they share scale and line up
 		m.box = radar.OpaqueBox(msg.a.Upper)
+		m.frame = m.box
 		m.resetCamera()
 	case tickMsg:
 		return tick()
@@ -261,6 +266,9 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			levelW, levelH = w1, h1
 		}
 	}
+	// zoom 1 shows the map grown to the area's shape: the view fills the frame
+	cols, rows := levelW-2, levelH-2-titleRows
+	m.frame = m.box.Fill(float64(cols) / (float64(rows) * m.aspect))
 	view := m.camera()
 	if len(m.levels) != len(want) || m.levels[0].w != levelW || m.levels[0].h != levelH || m.levels[0].r.Aspect != m.aspect || m.levels[0].view != view {
 		m.levels = nil
@@ -281,6 +289,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			ImageUnder: m.images(),
 			Names:      m.zoom >= namesFrom,
 			Focus:      m.focus,
+			Boom:       m.fx.boom(time.Now()),
 		}
 		var lines []string
 		if m.images() { // map and markers are terminal images: the text is blank
@@ -350,12 +359,9 @@ func (m *matchModel) view() string {
 	toggle := m.directorSwitch(mapW)
 	m.switchX = leftW + 1 // clicks on row 0 from here over the switch toggle it
 	mapH := body - 1      // row 0 is the director switch
-	mapStr := m.mapView(mapW, mapH, nums)
-	mapBlock := toggle + "\n" + lipgloss.Place(mapW, mapH, lipgloss.Center, lipgloss.Center, mapStr)
-	// where Place put the map: lipgloss centres with gap - round(gap/2) before it
-	before := func(gap int) int { return gap - int(math.Round(float64(gap)*0.5)) }
-	offX := leftW + 1 + before(mapW-lipgloss.Width(mapStr))
-	offY := 1 + before(mapH-lipgloss.Height(mapStr))
+	mapStr := m.fx.overlay(m.mapView(mapW, mapH, nums), time.Now())
+	mapBlock := toggle + "\n" + lipgloss.Place(mapW, mapH, lipgloss.Left, lipgloss.Top, mapStr)
+	offX, offY := leftW+1, 1 // the map sits right next to the scoreboard, under the switch
 	for _, lv := range m.levels {
 		lv.sx, lv.sy = offX+lv.ox, offY+lv.oy
 	}
