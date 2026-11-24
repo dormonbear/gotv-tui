@@ -13,25 +13,13 @@ import (
 // under the cell backgrounds, so zooming and panning only send a tiny placement and
 // the TUI's text (markers) draws over it.
 
-// KittyGraphics reports whether to draw images: GOTV_TUI_GRAPHICS=kitty|off forces
-// it; otherwise only terminals whose kitty graphics we rely on (kitty, Ghostty).
-func KittyGraphics() bool {
-	switch os.Getenv("GOTV_TUI_GRAPHICS") {
-	case "kitty", "1", "on":
-		return true
-	case "off", "0", "text":
-		return false
-	}
-	return os.Getenv("TERM_PROGRAM") == "ghostty" || os.Getenv("TERM") == "xterm-ghostty" ||
-		os.Getenv("TERM") == "xterm-kitty" || os.Getenv("KITTY_WINDOW_ID") != ""
-}
-
 // LockedFile serialises the TUI's frames and image uploads on one terminal. It is
 // still a terminal file (Fd, Read, Close pass through), so the TUI keeps reading the
 // window size and resize events from it.
 type LockedFile struct {
-	mu sync.Mutex
-	f  *os.File
+	mu      sync.Mutex
+	f       *os.File
+	overlay []byte // re-drawn after every TUI frame (images text would erase)
 }
 
 func NewLockedFile(f *os.File) *LockedFile { return &LockedFile{f: f} }
@@ -39,7 +27,22 @@ func NewLockedFile(f *os.File) *LockedFile { return &LockedFile{f: f} }
 func (l *LockedFile) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.f.Write(p)
+	n, err := l.f.Write(p)
+	if err == nil && len(l.overlay) > 0 {
+		// the frame may have rewritten lines the images were on: paint them again
+		_, err = l.f.Write(l.overlay)
+	}
+	return n, err
+}
+
+// SetOverlay draws b now and again after every following TUI frame; nil stops it.
+func (l *LockedFile) SetOverlay(b []byte) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.overlay = b
+	if len(b) > 0 {
+		l.f.Write(b)
+	}
 }
 
 func (l *LockedFile) Read(p []byte) (int, error) { return l.f.Read(p) }

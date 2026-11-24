@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"fmt"
-	"io"
 	"math"
 	"strings"
 	"time"
@@ -78,13 +77,16 @@ type matchModel struct {
 	focus     string                      // followed player (lowercase), "" for none
 	rowPlayer map[int]string              // scoreboard screen row -> player (lowercase)
 	// kitty graphics: images go to out (nil: draw the map in half blocks)
-	out      io.Writer
-	uploaded string // map whose radar images the terminal holds
-	sprites  spriteLayer
-	fx       fx
-	camX     float64 // camera centre, 1024 radar space
-	camY     float64
-	w, h     int
+	out          *term.LockedFile // image output (nil: text map)
+	gfx          term.Graphics
+	lastFrame    time.Time
+	frameSprites map[string]radar.Sprite
+	uploaded     string // map whose radar images the terminal holds
+	sprites      spriteLayer
+	fx           fx
+	camX         float64 // camera centre, 1024 radar space
+	camY         float64
+	w, h         int
 }
 
 func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
@@ -294,7 +296,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			Boom:       m.fx.boom(time.Now()),
 		}
 		var lines []string
-		if m.images() { // map and markers are terminal images: the text is blank
+		if m.images() || m.wholeFrames() { // map and markers are terminal images: the text is blank
 			for y := 0; y < lv.base.CH; y++ {
 				lines = append(lines, strings.Repeat(" ", lv.base.CW))
 			}
@@ -367,7 +369,10 @@ func (m *matchModel) view() string {
 	for _, lv := range m.levels {
 		lv.sx, lv.sy = offX+lv.ox, offY+lv.oy
 	}
-	m.placeImages()
+	if m.gfx == term.Kitty {
+		m.placeImages()
+	}
+	m.sendFrames()
 	zoom := ""
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)

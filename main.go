@@ -3,7 +3,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
@@ -53,16 +52,19 @@ func main() {
 		url = feeds.NormalizeURL(arg)
 	}
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion()}
-	var images io.Writer // kitty graphics share the TUI's output, one writer at a time
-	if term.KittyGraphics() {
-		lw := term.NewLockedFile(os.Stdout)
-		images = lw
-		opts = append(opts, tea.WithOutput(lw))
+	gfx := term.DetectGraphics()
+	var images *term.LockedFile // images share the TUI's output, one writer at a time
+	if gfx != term.Text {
+		images = term.NewLockedFile(os.Stdout)
+		opts = append(opts, tea.WithOutput(images))
 	}
-	_, err := tea.NewProgram(ui.New(url, images), opts...).Run()
+	_, err := tea.NewProgram(ui.New(url, images, gfx), opts...).Run()
 	if images != nil {
-		term.DeleteImages(images)
-		term.PixelMouse(images, false)
+		images.SetOverlay(nil)
+		if gfx == term.Kitty {
+			term.DeleteImages(images)
+			term.PixelMouse(images, false)
+		}
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
