@@ -1,0 +1,312 @@
+package ui
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/dormonbear/gotv-tui/internal/gotv"
+	"github.com/dormonbear/gotv-tui/internal/radar"
+	"github.com/dormonbear/gotv-tui/internal/term"
+)
+
+const (
+	logLimit = 200
+	leftMax  = 80
+)
+
+type (
+	stateMsg  gotv.State
+	eventMsg  gotv.Event
+	statusMsg string
+	radarMsg  struct {
+		a   *radar.Assets
+		err error
+	}
+	tickMsg time.Time
+)
+
+// levelMap caches one framed radar level for a size.
+type levelMap struct {
+	lower  bool
+	w, h   int
+	view   radar.Box
+	ox, oy int // raster's top-left cell inside the map block
+	sx, sy int // ... and on screen, for mouse hits
+	r      *radar.Raster
+	base   *radar.Base
+}
+
+type matchModel struct {
+	url     string
+	cancel  context.CancelFunc
+	ch      chan tea.Msg
+	st      *gotv.State
+	log     []gotv.Event // newest first
+	kills   []radar.KillMark
+	status  string
+	assets  *radar.Assets
+	box     radar.Box
+	levels  []*levelMap
+	loading string  // map being loaded
+	aspect  float64 // terminal cell height / width
+	zoom    float64 // camera: 1 = whole map
+	zoomTo  float64 // zoom animates towards this
+	anchor  anchor  // radar point held still while zooming
+	moving  bool    // zoom animation running
+	camX    float64 // camera centre, 1024 radar space
+	camY    float64
+	w, h    int
+}
+
+func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
+	ctx, cancel := context.WithCancel(context.Background())
+	m := &matchModel{url: url, cancel: cancel, ch: make(chan tea.Msg, 64), status: "connecting...", w: w, h: h, aspect: term.CellAspect()}
+	send := func(msg tea.Msg, drop bool) {
+		if drop { // frames are superseded by the next one; never block the parser on them
+			select {
+			case m.ch <- msg:
+			default:
+			}
+			return
+		}
+		select {
+		case m.ch <- msg:
+		case <-ctx.Done():
+		}
+	}
+	go gotv.Connect(ctx, url, gotv.Handlers{
+		State:  func(s gotv.State) { send(stateMsg(s), true) },
+		Event:  func(e gotv.Event) { send(eventMsg(e), false) },
+		Status: func(s string) { send(statusMsg(s), false) },
+	})
+	return m, tea.Batch(m.wait(), tick())
+}
+
+func (m *matchModel) wait() tea.Cmd {
+	ch := m.ch
+	return func() tea.Msg { return <-ch }
+}
+
+func tick() tea.Cmd {
+	return tea.Tick(250*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
+func (m *matchModel) close() { m.cancel() }
+
+// applyEvent appends to the log and tracks this round's kills for the map.
+func (m *matchModel) applyEvent(e gotv.Event, now time.Time) {
+	m.log = append([]gotv.Event{e}, m.log...)
+	if len(m.log) > logLimit {
+		m.log = m.log[:logLimit]
+	}
+	switch {
+	case e.Kind == gotv.EvRoundStart:
+		m.kills = nil
+	case e.Kind == gotv.EvKill && e.To != nil:
+		m.kills = append(m.kills, radar.KillMark{From: e.From, To: *e.To, Victim: e.Victim.Side, At: now})
+	}
+}
+
+func (m *matchModel) update(msg tea.Msg) tea.Cmd {
+	switch msg := msg.(type) {
+	case stateMsg:
+		s := gotv.State(msg)
+		m.st = &s
+		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" {
+			m.loading = s.Map
+			return tea.Batch(m.wait(), loadRadar(s.Map))
+		}
+		return m.wait()
+	case eventMsg:
+		m.applyEvent(gotv.Event(msg), time.Now())
+		return m.wait()
+	case statusMsg:
+		m.status = string(msg)
+		return m.wait()
+	case radarMsg:
+		if msg.err != nil {
+			m.status = "map: " + msg.err.Error()
+			return nil
+		}
+		m.assets, m.levels = msg.a, nil
+		// both levels use the upper radar's crop so they share scale and line up
+		m.box = radar.OpaqueBox(msg.a.Upper)
+		m.resetCamera()
+	case tickMsg:
+		return tick()
+	case tea.KeyMsg:
+		return m.cameraKey(msg.String())
+	case tea.MouseMsg:
+		return m.mouse(msg)
+	case animMsg:
+		return m.step()
+	}
+	return nil
+}
+
+func loadRadar(name string) tea.Cmd {
+	return func() tea.Msg {
+		a, err := radar.Load(name)
+		return radarMsg{a, err}
+	}
+}
+
+func mmss(s float64) string {
+	return fmt.Sprintf("%d:%02d", int(s)/60, int(s)%60)
+}
+
+// header puts the clocks first: when the line is cut to the column width only the
+// team names and map lose characters, never a countdown.
+func header(st *gotv.State) string {
+	var clock string
+	switch {
+	case st.Over:
+		clock = bold("match over")
+	case st.SecondsLeft < 0:
+		clock = bold("--:--")
+	case st.Warmup:
+		clock = bold(mmss(st.SecondsLeft)) + dim(" warmup")
+	case st.Paused:
+		clock = bold(mmss(st.SecondsLeft)) + dim(" paused")
+	case st.Freeze:
+		clock = bold(mmss(st.SecondsLeft)) + dim(" freeze")
+	default:
+		clock = bold(mmss(st.SecondsLeft))
+	}
+	bomb := ""
+	if b := st.Bomb; b != nil && b.State != gotv.BombDropped && !st.Over {
+		label := "BOMB"
+		if b.SecondsLeft >= 0 {
+			label += fmt.Sprintf(" %ds", int(math.Ceil(b.SecondsLeft)))
+		}
+		if b.State == gotv.BombDefusing {
+			label += " · DEFUSING"
+			if b.DefuseLeft >= 0 {
+				label += fmt.Sprintf(" %.1fs", b.DefuseLeft)
+			}
+		}
+		bomb = "  \x1b[41;1m " + label + " " + reset
+	}
+	return fmt.Sprintf(" %s%s  %s%s%s %d%s : %s%s%d %s%s  %s",
+		clock, bomb,
+		term.Fg(term.CT), boldOn, st.CT.Name, st.CT.Score, reset,
+		term.Fg(term.T), boldOn, st.T.Score, st.T.Name, reset,
+		dim(fmt.Sprintf("R%d %s", st.Round, st.Map)))
+}
+
+var frame = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("8"))
+
+func (m *matchModel) mapView(width, height int, nums map[string]int) string {
+	a := m.assets
+	if a == nil {
+		return dim(" loading map...")
+	}
+	want := []bool{false}
+	titleRows := 0 // single-level maps skip the title row (map name is in the header)
+	if a.Lower != nil {
+		want, titleRows = []bool{false, true}, 1
+	}
+	// a framed level takes 2 border cols/rows plus its title row
+	fit := func(w, h int) (int, int, float64) {
+		return w, h, radar.FitScale(m.box, (w-2)*2, (h-2-titleRows)*4, m.aspect)
+	}
+	levelW, levelH, _ := fit(width, height)
+	stacked := false
+	if len(want) == 2 { // two levels side by side or stacked, whichever draws bigger
+		w1, h1, side := fit(width/2, height)
+		w2, h2, stack := fit(width, height/2)
+		if stacked = stack > side; stacked {
+			levelW, levelH = w2, h2
+		} else {
+			levelW, levelH = w1, h1
+		}
+	}
+	view := m.camera()
+	if len(m.levels) != len(want) || m.levels[0].w != levelW || m.levels[0].h != levelH || m.levels[0].r.Aspect != m.aspect || m.levels[0].view != view {
+		m.levels = nil
+		for _, lower := range want {
+			img := a.Upper
+			if lower {
+				img = a.Lower
+			}
+			r := radar.Rasterize(img, a.Overview, view, (levelW-2)*2, (levelH-2-titleRows)*4, m.aspect)
+			m.levels = append(m.levels, &levelMap{lower: lower, w: levelW, h: levelH, view: view, r: r, base: radar.BuildBase(r)})
+		}
+	}
+	var boxes []string
+	for i, lv := range m.levels {
+		lines := radar.Draw(lv.r, lv.base, m.st, radar.Opts{
+			Kills: m.kills, Nums: nums, Now: time.Now(), Lower: lv.lower,
+			LowerBelow: a.Overview.LowerBelow, Sites: radar.SitesOn(a.Map, lv.lower, a.Overview.Sites),
+		})
+		if titleRows > 0 {
+			name := " upper"
+			if lv.lower {
+				name = " lower"
+			}
+			lines = append([]string{dim(name)}, lines...)
+		}
+		box := frame.Render(strings.Join(lines, "\n"))
+		lv.ox, lv.oy = 1, 1+titleRows // inside the border and title
+		if stacked {
+			lv.oy += i * lipgloss.Height(box)
+		} else {
+			lv.ox += i * lipgloss.Width(box)
+		}
+		boxes = append(boxes, box)
+	}
+	if stacked {
+		return lipgloss.JoinVertical(lipgloss.Center, boxes...)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, boxes...)
+}
+
+// Layout: left = header + scoreboard, game log below (fixed width); right = minimap.
+func (m *matchModel) view() string {
+	leftW := min(leftMax, m.w/2) // scoreboard needs ~76 cols; the map gets the rest
+	mapW := m.w - leftW - 1
+	body := m.h - 1 // footer
+	var left []string
+	var nums map[string]int
+	if m.st == nil {
+		left = append(left, dim(" "+m.status+" · waiting for game state..."))
+	} else {
+		nums = PlayerNumbers(m.st.Players)
+		left = append(left, header(m.st))
+		left = append(left, TeamTable(gotv.CT, m.st.CT, m.st.Players, nums)...)
+		left = append(left, TeamTable(gotv.T, m.st.T, m.st.Players, nums)...)
+	}
+	left = append(left, "", bold("Game log"))
+	if len(m.log) == 0 {
+		left = append(left, dim("events appear from the moment you connect"))
+	}
+	for i := 0; i < len(m.log) && len(left) < body; i++ {
+		left = append(left, FormatEvent(m.log[i]))
+	}
+	for i := range left {
+		left[i] = ansi.Truncate(left[i], leftW, "")
+	}
+	leftBlock := lipgloss.NewStyle().Width(leftW).Height(body).MaxHeight(body).Render(strings.Join(left, "\n"))
+	mapStr := m.mapView(mapW, body, nums)
+	mapBlock := lipgloss.Place(mapW, body, lipgloss.Center, lipgloss.Center, mapStr)
+	// where Place put the map: lipgloss centres with gap - round(gap/2) before it
+	before := func(gap int) int { return gap - int(math.Round(float64(gap)*0.5)) }
+	offX := leftW + 1 + before(mapW-lipgloss.Width(mapStr))
+	offY := before(body - lipgloss.Height(mapStr))
+	for _, lv := range m.levels {
+		lv.sx, lv.sy = offX+lv.ox, offY+lv.oy
+	}
+	zoom := ""
+	if m.zoom > 1.01 {
+		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
+	}
+	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · wheel/+- zoom · ←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, " ", mapBlock) + "\n" + footer
+}

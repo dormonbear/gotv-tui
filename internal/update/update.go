@@ -1,0 +1,124 @@
+// Package update replaces the running binary with the latest GitHub release.
+package update
+
+import (
+	"compress/gzip"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"runtime"
+	"strings"
+)
+
+const repo = "dormonbear/gotv-tui"
+
+// AssetName is this platform's release asset, e.g. gotv-tui-darwin-arm64, gotv-tui-windows-x64.exe.
+func AssetName(goos, goarch string) string {
+	arch := map[string]string{"amd64": "x64", "arm64": "arm64"}[goarch]
+	if arch == "" || (goos != "darwin" && goos != "linux" && goos != "windows") {
+		return ""
+	}
+	name := "gotv-tui-" + goos + "-" + arch
+	if goos == "windows" {
+		name += ".exe"
+	}
+	return name
+}
+
+func get(url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "gotv-tui")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	r, err := http.DefaultClient.Do(req)
+	if err == nil && r.StatusCode != http.StatusOK {
+		r.Body.Close()
+		return nil, fmt.Errorf("%s: HTTP %s", url, r.Status)
+	}
+	return r, err
+}
+
+// Run downloads the latest release over the running executable.
+func Run(current string) (string, error) {
+	if current == "dev" {
+		return "Built from source: update with git pull && go build.", nil
+	}
+	asset := AssetName(runtime.GOOS, runtime.GOARCH)
+	if asset == "" {
+		return "No prebuilt binary for " + runtime.GOOS + "-" + runtime.GOARCH + ".", nil
+	}
+	r, err := get("https://api.github.com/repos/" + repo + "/releases/latest")
+	if err != nil {
+		return "", err
+	}
+	var rel struct {
+		Tag    string `json:"tag_name"`
+		Assets []struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	err = json.NewDecoder(r.Body).Decode(&rel)
+	r.Body.Close()
+	if err != nil {
+		return "", err
+	}
+	latest := strings.TrimPrefix(rel.Tag, "v")
+	if latest == strings.TrimPrefix(current, "v") {
+		return "Already up to date (v" + latest + ").", nil
+	}
+	url := ""
+	for _, a := range rel.Assets {
+		if a.Name == asset+".gz" {
+			url = a.URL
+		}
+	}
+	if url == "" {
+		return "", fmt.Errorf("release %s has no %s.gz", rel.Tag, asset)
+	}
+	bin, err := get(url)
+	if err != nil {
+		return "", err
+	}
+	defer bin.Body.Close()
+	target, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	tmp := target + ".new"
+	if err := writeGunzip(tmp, bin.Body); err != nil {
+		os.Remove(tmp)
+		return "", err
+	}
+	// a running .exe can't be overwritten on Windows, but it can be renamed away
+	if runtime.GOOS == "windows" {
+		os.Remove(target + ".old")
+		if err := os.Rename(target, target+".old"); err != nil {
+			return "", err
+		}
+	}
+	if err := os.Rename(tmp, target); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Updated v%s -> v%s.", strings.TrimPrefix(current, "v"), latest), nil
+}
+
+func writeGunzip(path string, r io.Reader) error {
+	z, err := gzip.NewReader(r)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(f, z); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}

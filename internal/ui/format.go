@@ -1,0 +1,212 @@
+package ui
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/dormonbear/gotv-tui/internal/gotv"
+	"github.com/dormonbear/gotv-tui/internal/term"
+)
+
+const (
+	dimOn  = "\x1b[2m"
+	boldOn = "\x1b[1m"
+	reset  = term.Reset
+)
+
+func dim(s string) string  { return dimOn + s + reset }
+func bold(s string) string { return boldOn + s + reset }
+
+func sideColor(s gotv.Side) term.RGB {
+	if s == gotv.CT {
+		return term.CT
+	}
+	return term.T
+}
+
+func who(w *gotv.Who) string {
+	if w == nil {
+		return "?"
+	}
+	return term.Fg(sideColor(w.Side)) + w.Name + reset
+}
+
+func orQ(s string) string {
+	if s == "" {
+		return "?"
+	}
+	return s
+}
+
+// FormatEvent renders one game-log line.
+func FormatEvent(e gotv.Event) string {
+	switch e.Kind {
+	case gotv.EvKill:
+		if e.Killer == nil || e.Killer.Name == e.Victim.Name {
+			return who(e.Victim) + " " + dim("died ["+e.Weapon+"]")
+		}
+		s := who(e.Killer)
+		if e.Assister != nil {
+			s += " + " + who(e.Assister)
+			if e.AssistFlash {
+				s += dim("(flash)")
+			}
+		}
+		tags := []string{e.Weapon}
+		for _, t := range []struct {
+			on   bool
+			name string
+		}{{e.Headshot, "HS"}, {e.Wallbang, "wall"}, {e.ThroughSmoke, "smoke"}, {e.NoScope, "noscope"}, {e.Blind, "blind"}} {
+			if t.on {
+				tags = append(tags, t.name)
+			}
+		}
+		return s + " " + dim("["+strings.Join(tags, " ")+"]") + " " + who(e.Victim)
+	case gotv.EvRoundStart:
+		return bold(fmt.Sprintf("── Round %d started", e.Round))
+	case gotv.EvRoundEnd:
+		w := "?"
+		if e.Winner != "" {
+			w = term.Fg(sideColor(e.Winner)) + string(e.Winner) + reset + boldOn
+		}
+		return bold("── Round over - " + w + " " + e.Reason)
+	case gotv.EvPlant:
+		return term.Fg(term.T) + orQ(e.Player) + reset + " planted the bomb"
+	case gotv.EvDefuse:
+		return term.Fg(term.CT) + orQ(e.Player) + reset + " defused the bomb"
+	case gotv.EvExplode:
+		return bold("Bomb exploded")
+	}
+	return ""
+}
+
+// PlayerNumbers is a stable 1..5 numbering per side, shared by table badges and map dots.
+func PlayerNumbers(players []gotv.Player) map[string]int {
+	m := map[string]int{}
+	for _, side := range []gotv.Side{gotv.CT, gotv.T} {
+		var names []string
+		for _, p := range players {
+			if p.Side == side {
+				names = append(names, strings.ToLower(p.Name))
+			}
+		}
+		sort.Strings(names)
+		for i, n := range names {
+			m[n] = i + 1
+		}
+	}
+	return m
+}
+
+var nadeGlyph = map[gotv.Nade]string{
+	gotv.HE:    "\x1b[38;2;235;80;70mH",
+	gotv.Flash: "\x1b[38;2;240;240;240mF",
+	gotv.Smoke: "\x1b[38;2;160;165;175mS",
+	gotv.Fire:  "\x1b[38;2;240;130;40mM",
+	gotv.Decoy: "\x1b[38;2;120;200;120mD",
+}
+
+func nadeText(ns []gotv.Nade) string {
+	if len(ns) == 0 {
+		return ""
+	}
+	s := boldOn
+	for _, n := range ns {
+		s += nadeGlyph[n]
+	}
+	return s + reset
+}
+
+// Header columns line up with the rows below; the team title fills the first titleW.
+const titleW = 17
+
+var columns = fmt.Sprintf("%-14s %6s   K  D  A%6s  kit %-11sutil", "hp", "$", "ADR", "weapon")
+
+func title(side gotv.Side, t gotv.Team) string {
+	tail := fmt.Sprintf(" %d", t.Score)
+	room := titleW - 1 - len(tail) - len(" "+string(side)+" ") // keep one space before "hp"
+	name := t.Name
+	if ansi.StringWidth(name) > room {
+		name = strings.TrimRight(ansi.Truncate(name, room-1, ""), " ") + "…"
+	}
+	return ansi.Truncate(fmt.Sprintf(" %s %s%s%s", side, name, tail, strings.Repeat(" ", titleW)), titleW, "")
+}
+
+func gunName(g string) string {
+	if len(g) > 10 {
+		return g[:10]
+	}
+	return g
+}
+
+func hpBar(hp int) string {
+	n := min(10, max(0, (hp+5)/10))
+	c := "\x1b[31m"
+	if hp > 60 {
+		c = "\x1b[32m"
+	} else if hp > 25 {
+		c = "\x1b[33m"
+	}
+	return c + strings.Repeat("█", n) + dimOn + strings.Repeat("░", 10-n) + reset
+}
+
+func pad(s string, w int) string { // pad/cut a plain string to exactly w cells
+	return ansi.Truncate(s+strings.Repeat(" ", w), w, "")
+}
+
+// TeamTable renders the title row and one row per player of side.
+func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[string]int) []string {
+	c := sideColor(side)
+	out := []string{term.Fg(c) + boldOn + title(side, t) + reset + dim(columns)}
+	var rows []gotv.Player
+	for _, p := range players {
+		if p.Side == side {
+			rows = append(rows, p)
+		}
+	}
+	num := func(p gotv.Player) int {
+		if n, ok := nums[strings.ToLower(p.Name)]; ok {
+			return n
+		}
+		return 9
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return num(rows[i]) < num(rows[j]) })
+	for _, p := range rows {
+		badge := " " + " " + " "
+		if n := num(p); n < 9 {
+			badge = fmt.Sprintf(" %d ", n)
+		}
+		badge = term.Bg(c) + term.Fg(term.Black) + badge + reset
+		kit := " "
+		if p.Helmet {
+			kit = "H"
+		} else if p.Armor > 0 {
+			kit = "A"
+		}
+		if p.Defuser {
+			kit += "K"
+		} else {
+			kit += " "
+		}
+		if p.HasBomb {
+			kit += "\x1b[31mB" + reset
+		} else {
+			kit += " "
+		}
+		hp := dim("   dead       ")
+		gear := ""
+		if p.Alive {
+			hp = hpBar(p.HP) + fmt.Sprintf("%4d", p.HP)
+			gear = fmt.Sprintf("%-10s ", gunName(p.Gun)) + nadeText(p.Nades)
+		}
+		row := fmt.Sprintf("%s %s %s %6s %3d%3d%3d %5.0f  %s %s", badge, pad(p.Name, 12), hp, fmt.Sprintf("$%d", p.Money), p.Kills, p.Deaths, p.Assists, p.ADR, kit, gear)
+		if !p.Alive {
+			row = dimOn + row + reset
+		}
+		out = append(out, row)
+	}
+	return out
+}

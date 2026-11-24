@@ -1,0 +1,41 @@
+# Push a tag like v0.2.0 to build static binaries for every platform and publish
+# them as a GitHub release. Pure Go (no cgo), so one Linux job cross-compiles all;
+# the Go linker ad-hoc signs darwin/arm64 binaries itself.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - name: build
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -eu
+          mkdir dist
+          for t in darwin/arm64/arm64 darwin/amd64/x64 linux/amd64/x64 linux/arm64/arm64 windows/amd64/x64; do
+            IFS=/ read -r goos goarch arch <<< "$t"
+            asset="gotv-tui-$goos-$arch"
+            [ "$goos" = windows ] && asset="$asset.exe"
+            GOOS=$goos GOARCH=$goarch go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME#v}" -o "dist/$asset" .
+            # install.sh and `gotv-tui update` fetch the .gz; Windows also gets the plain .exe
+            gzip -9 -k "dist/$asset"
+            [ "$goos" = windows ] || rm "dist/$asset"
+          done
+          ls -l dist
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
