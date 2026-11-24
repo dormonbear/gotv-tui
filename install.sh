@@ -25,13 +25,13 @@ if [ "$os" = darwin ] && [ "$arch" = x64 ] && [ "$(sysctl -n hw.optional.arm64 2
 fi
 
 asset="gotv-tui-$os-$arch"
-url="https://github.com/$REPO/releases/latest/download/$asset"
+url="https://github.com/$REPO/releases/latest/download/$asset.gz"
 
 mkdir -p "$DIR"
 tmp=$(mktemp "${TMPDIR:-/tmp}/gotv-tui.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
 echo "Downloading $asset ..."
-curl -fSL --progress-bar "$url" -o "$tmp"
+curl -fSL --progress-bar "$url" | gunzip > "$tmp"
 chmod 755 "$tmp"
 mv "$tmp" "$DIR/gotv-tui"
 trap - EXIT

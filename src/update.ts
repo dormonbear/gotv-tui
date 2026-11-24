@@ -1,5 +1,6 @@
 import { chmodSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 
 export const REPO = 'dormonbear/gotv-tui'
 
@@ -24,13 +25,13 @@ export async function selfUpdate(current: string): Promise<string> {
   const rel = (await r.json()) as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
   const latest = rel.tag_name.replace(/^v/, '')
   if (latest === current) return `Already up to date (v${current}).`
-  const url = rel.assets.find((a) => a.name === asset)?.browser_download_url
-  if (!url) throw new Error(`release ${rel.tag_name} has no ${asset}`)
+  const url = rel.assets.find((a) => a.name === `${asset}.gz`)?.browser_download_url
+  if (!url) throw new Error(`release ${rel.tag_name} has no ${asset}.gz`)
   const bin = await fetch(url, { headers: { 'user-agent': 'gotv-tui' } })
   if (!bin.ok) throw new Error(`download: HTTP ${bin.status}`)
   const target = process.execPath
   const tmp = `${target}.new`
-  writeFileSync(tmp, Buffer.from(await bin.arrayBuffer()))
+  writeFileSync(tmp, gunzipSync(Buffer.from(await bin.arrayBuffer())))
   chmodSync(tmp, 0o755)
   // a running .exe can't be overwritten on Windows, but it can be renamed away
   if (process.platform === 'win32') {

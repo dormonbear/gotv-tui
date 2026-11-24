@@ -15,7 +15,9 @@ const TITLE_W = 17
 const COLUMNS = 'hp'.padEnd(14) + ' ' + '$'.padStart(6) + '   K  D  A' + 'ADR'.padStart(6) + '  kit ' + 'weapon'.padEnd(11) + 'util'
 const title = (side: Side, t: { name: string; score: number }) => {
   const tail = ` ${t.score}`
-  return (` ${side} ` + t.name).slice(0, TITLE_W - 1 - tail.length).concat(tail).padEnd(TITLE_W) // keep one space before "hp"
+  const room = TITLE_W - 1 - tail.length - ` ${side} `.length // keep one space before "hp"
+  const name = t.name.length > room ? t.name.slice(0, room - 1).trimEnd() + '…' : t.name
+  return (` ${side} ${name}${tail}`).padEnd(TITLE_W)
 }
 const gunName = (g: string | null) => (g ?? '').replace('_silencer', '-s').replace('_', '-').slice(0, 10)
 

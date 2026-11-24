@@ -36,10 +36,17 @@ jobs:
       - run: bun build --compile --target=${{ matrix.target }} src/main.tsx --outfile dist/${{ matrix.asset }}
       - if: runner.os == 'macOS'
         run: codesign --force --sign - dist/${{ matrix.asset }}
+      # ~70 MB binaries are ~97% Bun runtime; gzip halves the download.
+      # install.sh and `gotv-tui update` fetch the .gz; Windows also gets the plain .exe.
+      - name: compress
+        shell: bash
+        run: |
+          gzip -9 -k dist/${{ matrix.asset }}
+          [[ "${{ matrix.asset }}" == *.exe ]] || rm dist/${{ matrix.asset }}
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}*
           if-no-files-found: error
 
   release:
