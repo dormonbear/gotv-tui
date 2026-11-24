@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/radar"
 )
@@ -79,5 +81,37 @@ func TestZoomEasesInAndHoldsTheAnchor(t *testing.T) {
 	}
 	if m.zoom != 2 || frames < 5 {
 		t.Fatalf("zoom %.3f after %d frames", m.zoom, frames)
+	}
+}
+
+func TestDragKeepsTheGrabbedPointUnderThePointer(t *testing.T) {
+	for _, lower := range []bool{false, true} {
+		dragOn(t, lower)
+	}
+}
+
+// dragOn grabs the last level shown (the lower map on two-level maps): both levels
+// share one camera, so the other level must move with it.
+func dragOn(t *testing.T, lower bool) {
+	m := testMatch(lower)
+	m.zoom, m.zoomTo = 3, 3
+	m.view()
+	lv := m.levels[len(m.levels)-1]
+	x, y := lv.sx+20, lv.sy+8
+	ax, ay, _ := m.radarAt(x, y)
+	m.mouse(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m.mouse(tea.MouseMsg{X: x + 5, Y: y + 2, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	m.mouse(tea.MouseMsg{X: x + 7, Y: y + 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	m.mouse(tea.MouseMsg{X: x + 7, Y: y + 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	m.view()
+	if bx, by, _ := m.radarAt(x+7, y+3); math.Abs(bx-ax) > 1e-6 || math.Abs(by-ay) > 1e-6 {
+		t.Fatalf("lower=%v: grabbed (%.1f,%.1f), now under pointer (%.1f,%.1f)", lower, ax, ay, bx, by)
+	}
+	if m.levels[0].view != m.levels[len(m.levels)-1].view {
+		t.Fatal("levels no longer share the camera")
+	}
+	m.mouse(tea.MouseMsg{X: x + 30, Y: y, Button: tea.MouseButtonNone, Action: tea.MouseActionMotion})
+	if m.drag.on {
+		t.Fatal("still dragging after release")
 	}
 }

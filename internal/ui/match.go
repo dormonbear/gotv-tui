@@ -60,6 +60,7 @@ type matchModel struct {
 	zoomTo  float64 // zoom animates towards this
 	anchor  anchor  // radar point held still while zooming
 	moving  bool    // zoom animation running
+	drag    drag
 	camX    float64 // camera centre, 1024 radar space
 	camY    float64
 	w, h    int
@@ -307,6 +308,6 @@ func (m *matchModel) view() string {
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · wheel/+- zoom · ←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
+	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, " ", mapBlock) + "\n" + footer
 }
