@@ -58,7 +58,7 @@ func TestWinnerBanner(t *testing.T) {
 func TestFollowedPlayerRowIsFramed(t *testing.T) {
 	ps := []gotv.Player{{Name: "s1n", Side: gotv.T, Alive: true, HP: 100}, {Name: "JBa", Side: gotv.T, Alive: false}}
 	nums := PlayerNumbers(ps)
-	rows := TeamTable(gotv.T, gotv.Team{Name: "M80"}, ps, nums, "jba")
+	rows := TeamTable(gotv.T, gotv.Team{Name: "M80"}, ps, nums, "jba", false)
 	plainRow := plain(rows[1]) // JBa sorts first
 	if !strings.Contains(rows[1], "\x1b[53;4") || !strings.HasPrefix(plainRow, "▌1 ") {
 		t.Fatalf("followed row not framed: %q", rows[1])
