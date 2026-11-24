@@ -386,7 +386,7 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 				put(*pl.Pos, glyph{ch: "✕", fg: term.Mix(teamColor(pl.Side), term.Black, 0.2), bold: true}, false)
 			}
 		}
-		labels := playerLabels(st.Players, o, here, toCell, CW)
+		labels := playerLabels(st.Players, o, here, toCell, CW, shortName)
 		for _, pl := range st.Players {
 			if pl.Alive && pl.Pos != nil && here(*pl.Pos) {
 				cx, cy := toCell(*pl.Pos)
@@ -459,10 +459,13 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 // maxName is the longest name shown on the map; longer ones are cut.
 const maxName = 10
 
+// shortName is the text map's label: 2 cells is about square, so no long bars.
+const shortName = 2
+
 // playerLabels picks what marks each alive player on this level: the name when
 // Opts.Names is on and it fits without touching another player or label, else the
 // scoreboard number. Players are labelled left to right so the result is stable.
-func playerLabels(players []gotv.Player, o Opts, here func(gotv.Vec) bool, toCell func(gotv.Vec) (int, int), CW int) map[string]string {
+func playerLabels(players []gotv.Player, o Opts, here func(gotv.Vec) bool, toCell func(gotv.Vec) (int, int), CW, maxLen int) map[string]string {
 	type mark struct {
 		name   string
 		cx, cy int
@@ -479,6 +482,11 @@ func playerLabels(players []gotv.Player, o Opts, here func(gotv.Vec) bool, toCel
 	for _, m := range ms {
 		taken[[2]int{m.cx, m.cy}] = true
 	}
+	abbr := map[string]int{} // how many visible players share each short label
+	for _, m := range ms {
+		n := []rune(strings.ToLower(m.name))
+		abbr[string(n[:min(len(n), maxLen)])]++
+	}
 	out := map[string]string{}
 	for _, m := range ms {
 		num := "●"
@@ -490,10 +498,16 @@ func playerLabels(players []gotv.Player, o Opts, here func(gotv.Vec) bool, toCel
 			continue
 		}
 		name := []rune(m.name)
-		if len(name) > maxName {
-			name = name[:maxName]
+		if len(name) > maxLen {
+			name = name[:maxLen]
 		}
 		label := " " + string(name) + " "
+		if maxLen <= shortName {
+			if abbr[strings.ToLower(string(name))] > 1 {
+				continue // two players read the same: keep their numbers
+			}
+			label = string(name)
+		}
 		w := len([]rune(label))
 		if m.cx+w > CW {
 			continue

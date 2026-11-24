@@ -185,11 +185,17 @@ func TestNamesWhereTheyFitNumbersElsewhere(t *testing.T) {
 	}}
 	rows := Draw(r, BuildBase(r, 1), st, Opts{Names: true, Nums: map[string]int{"s1n": 1, "jba": 2, "lake": 3, "swisher": 4}})
 	got := func(y int) string { return strings.TrimRight(string(strip(rows[y])), " ") }
-	if !strings.Contains(got(0), " s1n") || !strings.Contains(got(3), " Swisher") {
+	// text map labels are 2 cells (about square), not the whole name
+	if !strings.HasSuffix(got(0), "s1") || !strings.HasSuffix(got(3), "Sw") {
 		t.Fatalf("named rows: %q / %q", got(0), got(3))
 	}
-	if row := got(2); strings.Contains(row, "JBa") || !strings.Contains(row, "2") || !strings.Contains(row, " Lake") {
-		t.Fatalf("crowded row: %q (JBa should fall back to its number, Lake gets its name)", row)
+	if row := got(2); strings.Contains(row, "JB") || !strings.Contains(row, "2") || !strings.Contains(row, "La") {
+		t.Fatalf("crowded row: %q (JBa should fall back to its number, Lake gets its label)", row)
+	}
+	st.Players[0].Name = "Swift" // reads "Sw" like Swisher: both keep numbers
+	rows = Draw(r, BuildBase(r, 1), st, Opts{Names: true, Nums: map[string]int{"swift": 1, "swisher": 4}})
+	if strings.Contains(got(0), "Sw") || strings.Contains(got(3), "Sw") || !strings.Contains(got(0), "1") || !strings.Contains(got(3), "4") {
+		t.Fatalf("ambiguous labels: %q / %q", got(0), got(3))
 	}
 	if rows := Draw(r, BuildBase(r, 1), st, Opts{Nums: map[string]int{"s1n": 1}}); strings.Contains(string(strip(rows[0])), "s1n") {
 		t.Fatal("names shown with Names off")
