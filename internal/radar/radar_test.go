@@ -146,26 +146,25 @@ func TestBoxView(t *testing.T) {
 	}
 }
 
-func TestDrawUsesImagePlaceholders(t *testing.T) {
+func TestDrawLeavesMapCellsBlankOverAnImage(t *testing.T) {
 	const W, H = 8, 8 // 4x2 cells
 	r := &Raster{W: W, H: H, Pixels: make([]byte, W*SS*H*SS*4), Aspect: 2, ov: Overview{Scale: 1}, k: 1, ky: 1}
 	for i := range r.Pixels {
 		r.Pixels[i] = 255
 	}
 	st := &gotv.State{Players: []gotv.Player{{Name: "a", Side: gotv.T, Alive: true, Pos: &gotv.Vec{X: 5, Y: -1}}}}
-	rows := Draw(r, BuildBase(r), st, Opts{Image: 0x475401, Nums: map[string]int{"a": 2}})
+	rows := Draw(r, BuildBase(r), st, Opts{ImageUnder: true, Nums: map[string]int{"a": 2}})
 	for y, row := range rows {
 		if w := ansi.StringWidth(row); w != 4 {
 			t.Fatalf("row %d is %d cells wide, want 4: %q", y, w, row)
 		}
 	}
-	cells := strip(rows[0])
-	want := []rune(term.Placeholder(0, 0))
-	if len(cells) < 3 || cells[0] != want[0] || cells[1] != want[1] || cells[2] != want[2] {
-		t.Fatalf("first cell is not image row 0 col 0: %q", string(cells))
+	// x=5 -> col 2 is the player (opaque badge), col 3 its arrow; cols 0, 1 are blank
+	// with no background so the image shows; row 1 is all image.
+	if !strings.HasPrefix(rows[0], "  ") || !strings.Contains(rows[0], "48;2") || string(strip(rows[0])[2]) != "2" {
+		t.Fatalf("row 0: %q", rows[0])
 	}
-	if s := string(cells); !strings.Contains(s, "2") || strings.Count(s, "\U0010EEEE") != 2 {
-		// x=5 -> col 2 is the player; col 3 is the facing arrow; cols 0, 1 show the image
-		t.Fatalf("row 0: %q", string(cells))
+	if rows[1] != "    " {
+		t.Fatalf("row 1: %q", rows[1])
 	}
 }

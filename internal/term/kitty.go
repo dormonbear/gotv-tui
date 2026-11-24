@@ -9,12 +9,12 @@ import (
 	"sync"
 )
 
-// Kitty graphics with Unicode placeholders: an image is sent once, then cells printed
-// as U+10EEEE (+ row/column diacritics, image id in the foreground colour) show it.
-// Placeholders are ordinary text, so the TUI can redraw and overlay them freely.
+// Kitty graphics: an image is uploaded once and then placed with a source rectangle
+// under the cell backgrounds, so zooming and panning only send a tiny placement and
+// the TUI's text (markers) draws over it.
 
 // KittyGraphics reports whether to draw images: GOTV_TUI_GRAPHICS=kitty|off forces
-// it; otherwise only terminals known to support Unicode placeholders (kitty, Ghostty).
+// it; otherwise only terminals whose kitty graphics we rely on (kitty, Ghostty).
 func KittyGraphics() bool {
 	switch os.Getenv("GOTV_TUI_GRAPHICS") {
 	case "kitty", "1", "on":
@@ -46,9 +46,8 @@ func (l *LockedFile) Read(p []byte) (int, error) { return l.f.Read(p) }
 func (l *LockedFile) Close() error               { return l.f.Close() }
 func (l *LockedFile) Fd() uintptr                { return l.f.Fd() }
 
-// SendImage uploads png as image id with a virtual placement of cols x rows cells,
-// replacing any earlier image with that id (placeholders on screen update in place).
-func SendImage(w io.Writer, id uint32, png []byte, cols, rows int) error {
+// UploadImage stores png in the terminal as image id (replacing it), without showing it.
+func UploadImage(w io.Writer, id uint32, png []byte) error {
 	data := base64.StdEncoding.EncodeToString(png)
 	var b strings.Builder
 	for i := 0; i < len(data); i += 4096 {
@@ -59,7 +58,7 @@ func SendImage(w io.Writer, id uint32, png []byte, cols, rows int) error {
 		}
 		b.WriteString("\x1b_G")
 		if i == 0 {
-			fmt.Fprintf(&b, "a=T,U=1,f=100,q=2,i=%d,c=%d,r=%d,", id, cols, rows)
+			fmt.Fprintf(&b, "a=t,f=100,q=2,i=%d,", id)
 		}
 		fmt.Fprintf(&b, "m=%d;%s\x1b\\", more, data[i:end])
 	}
@@ -67,13 +66,24 @@ func SendImage(w io.Writer, id uint32, png []byte, cols, rows int) error {
 	return err
 }
 
+// Rect is a source rectangle in image pixels.
+type Rect struct{ X, Y, W, H int }
+
+// belowBackgrounds is kitty's z-index for images under cell backgrounds: blank
+// cells show the image, cells with a background colour (map markers) cover it.
+const belowBackgrounds = -1073741825
+
+// PlaceImage shows src of image id in cols x rows cells with the top-left at screen
+// cell (x, y), 0-based, replacing the image's earlier placement. The cursor is saved
+// and restored so the TUI's own cursor bookkeeping is unaffected.
+func PlaceImage(w io.Writer, id uint32, x, y, cols, rows int, src Rect) error {
+	_, err := fmt.Fprintf(w, "\x1b7\x1b[%d;%dH\x1b_Ga=p,i=%d,p=1,x=%d,y=%d,w=%d,h=%d,c=%d,r=%d,z=%d,C=1,q=2\x1b\\\x1b8",
+		y+1, x+1, id, src.X, src.Y, src.W, src.H, cols, rows, belowBackgrounds)
+	return err
+}
+
+// HideImage removes the placements of image id but keeps it stored.
+func HideImage(w io.Writer, id uint32) { fmt.Fprintf(w, "\x1b_Ga=d,d=i,i=%d,q=2\x1b\\", id) }
+
 // DeleteImages frees every image this program uploaded.
 func DeleteImages(w io.Writer) { io.WriteString(w, "\x1b_Ga=d,d=A,q=2\x1b\\") }
-
-// ImageColor is the foreground colour that tells placeholders which image to show.
-func ImageColor(id uint32) string { return Fg(RGB{uint8(id >> 16), uint8(id >> 8), uint8(id)}) }
-
-// Placeholder is the cell at row, col of an image (both < len(diacritics)).
-func Placeholder(row, col int) string {
-	return string([]rune{0x10EEEE, diacritics[min(row, len(diacritics)-1)], diacritics[min(col, len(diacritics)-1)]})
-}

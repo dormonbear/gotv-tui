@@ -109,7 +109,7 @@ type Opts struct {
 	Lower      bool // which level this map shows
 	LowerBelow *float64
 	Sites      []Site
-	Image      uint32 // kitty image id of this map; 0 draws it in half blocks
+	ImageUnder bool // the terminal shows the radar image under blank cells
 }
 
 // Draw overlays the markers on this level over the static base, as ANSI rows.
@@ -240,22 +240,13 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 	var sb strings.Builder
 	for cy := 0; cy < CH; cy++ {
 		sb.Reset()
-		inImage := false // placeholder colour already set
 		for cx := 0; cx < CW; cx++ {
 			i := cy*CW + cx
 			g, has := glyphs[i]
 			t, b := top[i], bot[i]
-			if o.Image != 0 && !has && !tinted[i] {
-				if !inImage {
-					sb.WriteString(term.ImageColor(o.Image))
-					inImage = true
-				}
-				sb.WriteString(term.Placeholder(cy, cx))
+			if o.ImageUnder && !has && !tinted[i] {
+				sb.WriteByte(' ') // blank, no background: the image shows through
 				continue
-			}
-			if inImage {
-				sb.WriteString(term.Reset)
-				inImage = false
 			}
 			switch {
 			case has:
@@ -289,9 +280,6 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 			default:
 				sb.WriteByte(' ')
 			}
-		}
-		if inImage {
-			sb.WriteString(term.Reset)
 		}
 		rows[cy] = sb.String()
 	}

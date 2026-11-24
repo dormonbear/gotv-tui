@@ -1,55 +1,62 @@
 package ui
 
 import (
-	"time"
+	"image"
+	"math"
 
 	"github.com/dormonbear/gotv-tui/internal/radar"
 	"github.com/dormonbear/gotv-tui/internal/term"
 )
 
 const (
-	imageID    = 0x475401 // + level index; also the placeholders' foreground colour
+	imageID    = 0x475401 // + level index
 	imageAlpha = 0.85     // dim the map a little so markers stand out
-	// while the camera animates, upload at most this often (each upload is a PNG)
-	sendEvery = 80 * time.Millisecond
 )
 
-type sentImage struct {
-	ok         bool
-	view       radar.Box
-	cols, rows int
+// images reports whether the radar is drawn as a terminal image under the text.
+func (m *matchModel) images() bool {
+	return m.out != nil && m.assets != nil && m.uploaded == m.assets.Map
 }
 
-// sendImages uploads each level's visible area when it changed since the last upload.
-func (m *matchModel) sendImages() {
+// placeImages shows each level's current view. The images are uploaded once per map;
+// every frame then only sends a placement (position + source rectangle), so zoom
+// and pan follow the camera exactly, and a screen clear is repaired next frame.
+func (m *matchModel) placeImages() {
 	if m.out == nil || m.assets == nil {
 		return
 	}
-	if len(m.sent) != len(m.levels) {
-		m.sent = make([]sentImage, len(m.levels))
-	}
-	animating := m.moving || m.settling || m.drag.on
-	cw, ch := term.CellPixels()
-	for i, lv := range m.levels {
-		want := sentImage{true, lv.view, lv.base.CW, lv.base.CH}
-		if m.sent[i] == want || (animating && m.sent[i].ok && time.Since(m.lastSend) < sendEvery) {
-			continue
+	if m.uploaded != m.assets.Map {
+		m.hideImages()
+		levels := []*image.NRGBA{m.assets.Upper}
+		if m.assets.Lower != nil {
+			levels = append(levels, m.assets.Lower)
 		}
+		for i, src := range levels {
+			png, err := radar.ImagePNG(src, radar.Box{W: 1024, H: 1024}, src.Rect.Dx(), src.Rect.Dy(), imageAlpha)
+			if err != nil || term.UploadImage(m.out, imageID+uint32(i), png) != nil {
+				return // stay in half blocks
+			}
+		}
+		m.uploaded = m.assets.Map
+	}
+	for i, lv := range m.levels {
 		img := m.assets.Upper
 		if lv.lower {
 			img = m.assets.Lower
 		}
-		// no more pixels than the radar has in view: the terminal scales it up
-		src := lv.view.W * float64(img.Rect.Dx()) / 1024
-		w, h := want.cols*cw, want.rows*ch
-		if k := src / float64(w); k < 1 {
-			w, h = int(float64(w)*k), int(float64(h)*k)
-		}
-		png, err := radar.ImagePNG(img, lv.view, max(1, w), max(1, h), imageAlpha)
-		if err != nil || term.SendImage(m.out, imageID+uint32(i), png, want.cols, want.rows) != nil {
-			continue // keeps drawing half blocks for this level
-		}
-		m.sent[i] = want
-		m.lastSend = time.Now()
+		kx, ky := float64(img.Rect.Dx())/1024, float64(img.Rect.Dy())/1024
+		r := func(v float64) int { return int(math.Round(v)) }
+		src := term.Rect{X: r(lv.view.X * kx), Y: r(lv.view.Y * ky), W: max(1, r(lv.view.W*kx)), H: max(1, r(lv.view.H*ky))}
+		term.PlaceImage(m.out, imageID+uint32(i), lv.sx, lv.sy, lv.base.CW, lv.base.CH, src)
+	}
+}
+
+// hideImages takes the radar images off screen (keeping them uploaded).
+func (m *matchModel) hideImages() {
+	if m.out == nil {
+		return
+	}
+	for i := 0; i < 2; i++ {
+		term.HideImage(m.out, imageID+uint32(i))
 	}
 }
