@@ -1,4 +1,3 @@
-node_modules/
 dist/
 # generated locally by the context-mode Claude Code plugin
 CLAUDE.md

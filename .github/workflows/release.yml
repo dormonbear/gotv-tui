@@ -1,5 +1,6 @@
-# Push a tag like v0.1.0 (matching package.json "version") to build single-file
-# binaries for every platform and publish them as a GitHub release.
+# Push a tag like v0.2.0 to build static binaries for every platform and publish
+# them as a GitHub release. Pure Go (no cgo), so one Linux job cross-compiles all;
+# the Go linker ad-hoc signs darwin/arm64 binaries itself.
 name: release
 
 on:
@@ -10,53 +11,31 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          # macOS binaries are built (and ad-hoc signed) on macOS; Apple Silicon refuses unsigned ones
-          - { runner: macos-latest, target: bun-darwin-arm64, asset: gotv-tui-darwin-arm64 }
-          - { runner: macos-latest, target: bun-darwin-x64, asset: gotv-tui-darwin-x64 }
-          - { runner: ubuntu-latest, target: bun-linux-x64, asset: gotv-tui-linux-x64 }
-          - { runner: ubuntu-latest, target: bun-linux-arm64, asset: gotv-tui-linux-arm64 }
-          - { runner: ubuntu-latest, target: bun-windows-x64, asset: gotv-tui-windows-x64.exe }
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - uses: oven-sh/setup-bun@v2
-      - run: npm ci
-      - name: tag matches package.json version
-        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-      - run: npm run typecheck
-      - run: npm test
-      - run: bun build --compile --target=${{ matrix.target }} src/main.tsx --outfile dist/${{ matrix.asset }}
-      - if: runner.os == 'macOS'
-        run: codesign --force --sign - dist/${{ matrix.asset }}
-      # ~70 MB binaries are ~97% Bun runtime; gzip halves the download.
-      # install.sh and `gotv-tui update` fetch the .gz; Windows also gets the plain .exe.
-      - name: compress
-        shell: bash
-        run: |
-          gzip -9 -k dist/${{ matrix.asset }}
-          [[ "${{ matrix.asset }}" == *.exe ]] || rm dist/${{ matrix.asset }}
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}*
-          if-no-files-found: error
-
   release:
-    needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          path: dist
-          merge-multiple: true
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - name: build
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -eu
+          mkdir dist
+          for t in darwin/arm64/arm64 darwin/amd64/x64 linux/amd64/x64 linux/arm64/arm64 windows/amd64/x64; do
+            IFS=/ read -r goos goarch arch <<< "$t"
+            asset="gotv-tui-$goos-$arch"
+            [ "$goos" = windows ] && asset="$asset.exe"
+            GOOS=$goos GOARCH=$goarch go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME#v}" -o "dist/$asset" .
+            # install.sh and `gotv-tui update` fetch the .gz; Windows also gets the plain .exe
+            gzip -9 -k "dist/$asset"
+            [ "$goos" = windows ] || rm "dist/$asset"
+          done
+          ls -l dist
       - run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
