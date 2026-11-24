@@ -120,19 +120,27 @@ func nadeText(ns []gotv.Nade) string {
 	return s + reset
 }
 
-// Header columns line up with the rows below; the team title fills the first titleW.
-const titleW = 17
+// Header columns line up with the rows below; the team title fills the first
+// titleW (compactTitleW) cells.
+const (
+	titleW        = 17
+	compactTitleW = 14
+	compactWidth  = 44 // a compact row: number, name, hp, money, K/D, weapon
+)
 
-var columns = fmt.Sprintf("%-14s %6s   K  D  A%6s  kit %-11sutil", "hp", "$", "ADR", "weapon")
+var (
+	columns        = fmt.Sprintf("%-14s %6s   K  D  A%6s  kit %-11sutil", "hp", "$", "ADR", "weapon")
+	compactColumns = fmt.Sprintf(" %4s %6s%3s%3s weapon", "hp", "$", "K", "D")
+)
 
-func title(side gotv.Side, t gotv.Team) string {
+func title(side gotv.Side, t gotv.Team, w int) string {
 	tail := fmt.Sprintf(" %d", t.Score)
-	room := titleW - 1 - len(tail) - len(" "+string(side)+" ") // keep one space before "hp"
+	room := w - 1 - len(tail) - len(" "+string(side)+" ") // keep one space before "hp"
 	name := t.Name
 	if ansi.StringWidth(name) > room {
 		name = strings.TrimRight(ansi.Truncate(name, room-1, ""), " ") + "…"
 	}
-	return ansi.Truncate(fmt.Sprintf(" %s %s%s%s", side, name, tail, strings.Repeat(" ", titleW)), titleW, "")
+	return ansi.Truncate(fmt.Sprintf(" %s %s%s%s", side, name, tail, strings.Repeat(" ", w)), w, "")
 }
 
 func gunName(g string) string {
@@ -158,10 +166,14 @@ func pad(s string, w int) string { // pad/cut a plain string to exactly w cells
 }
 
 // TeamTable renders the title row and one row per player of side.
-// The followed player's row (focus, lowercase) is framed; see framed.
-func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[string]int, focus string) []string {
+// The followed player's row (focus, lowercase) is framed; see framed. compact keeps
+// only number, name, hp, money, K/D and weapon, for narrow screens.
+func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[string]int, focus string, compact bool) []string {
 	c := sideColor(side)
-	out := []string{term.Fg(c) + boldOn + title(side, t) + reset + dim(columns)}
+	out := []string{term.Fg(c) + boldOn + title(side, t, titleW) + reset + dim(columns)}
+	if compact {
+		out[0] = term.Fg(c) + boldOn + title(side, t, compactTitleW) + reset + dim(compactColumns)
+	}
 	num := func(p gotv.Player) int {
 		if n, ok := nums[strings.ToLower(p.Name)]; ok {
 			return n
@@ -201,11 +213,23 @@ func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[stri
 			gear = fmt.Sprintf("%-10s ", gunName(p.Gun)) + nadeText(p.Nades)
 		}
 		row := fmt.Sprintf("%s %s %s %6s %3d%3d%3d %5.0f  %s %s", badge, pad(p.Name, 12), hp, fmt.Sprintf("$%d", p.Money), p.Kills, p.Deaths, p.Assists, p.ADR, kit, gear)
+		width := rowWidth
+		if compact {
+			hp, gun := dim("dead"), ""
+			if p.Alive {
+				hp, gun = fmt.Sprintf("%4d", p.HP), gunName(p.Gun)
+			}
+			if p.HasBomb {
+				gun += " \x1b[31mB" + reset
+			}
+			row = fmt.Sprintf("%s %s %s %6s %3d%3d %s", badge, pad(p.Name, 10), hp, fmt.Sprintf("$%d", p.Money), p.Kills, p.Deaths, gun)
+			width = compactWidth
+		}
 		if !p.Alive {
 			row = dimOn + row + reset
 		}
 		if focused {
-			row = framed(row)
+			row = framed(row, width)
 		}
 		out = append(out, row)
 	}
@@ -239,10 +263,10 @@ var frameOn = term.Bg(term.RGB{44, 54, 74}) + "\x1b[53;4;58;2;235;235;235m"
 
 // framed boxes a scoreboard row: the frame style across the whole table width, kept
 // on through the row's own colour resets.
-func framed(row string) string {
+func framed(row string, width int) string {
 	row = strings.ReplaceAll(row, reset, reset+frameOn)
-	if w := ansi.StringWidth(row); w < rowWidth {
-		row += strings.Repeat(" ", rowWidth-w)
+	if w := ansi.StringWidth(row); w < width {
+		row += strings.Repeat(" ", width-w)
 	}
 	return frameOn + row + reset
 }

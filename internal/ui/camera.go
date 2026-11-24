@@ -158,10 +158,10 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 	}
 	if e.Action == tea.MouseActionPress && e.Button == tea.MouseButtonLeft {
 		x, y := m.pointer(e)
-		if int(y) == 0 && int(x) >= m.switchX && int(x) < m.switchX+m.switchW {
+		if int(y) == m.switchY && int(x) >= m.switchX && int(x) < m.switchX+m.switchW {
 			return m.toggleDirector()
 		}
-		if name := m.rowPlayer[int(y)]; name != "" && int(x) < m.switchX { // scoreboard row
+		if name := m.rowPlayer[int(y)]; name != "" && int(x) < m.panelW { // scoreboard row
 			return m.focusOn(name)
 		}
 		if name := m.playerAt(x, y); name != "" {

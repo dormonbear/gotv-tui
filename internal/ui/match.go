@@ -72,10 +72,12 @@ type matchModel struct {
 	shot      *director.Shot
 	soon      []playback.Soon[gotv.Event] // events queued ahead of the screen
 	settling  bool                        // camera still moving to the last shot
-	switchX   int                         // screen column where the director switch starts
-	switchW   int                         // its width; it sits on screen row 0
-	focus     string                      // followed player (lowercase), "" for none
-	rowPlayer map[int]string              // scoreboard screen row -> player (lowercase)
+	switchX   int                         // screen cell where the director switch starts
+	switchY   int
+	panelW    int            // width of the scoreboard (clicks there select players)
+	switchW   int            // its width; it sits on screen row 0
+	focus     string         // followed player (lowercase), "" for none
+	rowPlayer map[int]string // scoreboard screen row -> player (lowercase)
 	// kitty graphics: images go to out (nil: draw the map in half blocks)
 	out          *term.LockedFile // image output (nil: text map)
 	gfx          term.Graphics
@@ -325,49 +327,91 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, boxes...)
 }
 
-// Layout: left = header + scoreboard, game log below (fixed width); right = minimap.
-func (m *matchModel) view() string {
-	leftW := min(leftMax, m.w/2) // scoreboard needs ~76 cols; the map gets the rest
-	mapW := m.w - leftW - 1
-	body := m.h - 1 // footer
-	var left []string
-	var nums map[string]int
+const (
+	wideMin    = leftMax + 40 // narrower than this: scoreboard, map and log stacked
+	compactMax = 76           // narrower than this: compact scoreboard
+	logMin     = 3            // log rows kept under a stacked map
+)
+
+// panel is the header and both team tables; it also records which screen row
+// shows which player (it always starts at row 0).
+func (m *matchModel) panel(nums map[string]int, compact bool) []string {
 	if m.st == nil {
-		left = append(left, dim(" "+m.status+" · waiting for game state..."))
-	} else {
-		nums = PlayerNumbers(m.st.Players)
-		left = append(left, header(m.st))
-		m.rowPlayer = map[int]string{}
-		for _, side := range []struct {
-			s gotv.Side
-			t gotv.Team
-		}{{gotv.CT, m.st.CT}, {gotv.T, m.st.T}} {
-			top := len(left) + 1 // below the team's title row
-			for i, p := range teamRows(side.s, m.st.Players, nums) {
-				m.rowPlayer[top+i] = strings.ToLower(p.Name)
-			}
-			left = append(left, TeamTable(side.s, side.t, m.st.Players, nums, m.focus)...)
+		return []string{dim(" " + m.status + " · waiting for game state...")}
+	}
+	lines := []string{header(m.st)}
+	m.rowPlayer = map[int]string{}
+	for _, side := range []struct {
+		s gotv.Side
+		t gotv.Team
+	}{{gotv.CT, m.st.CT}, {gotv.T, m.st.T}} {
+		top := len(lines) + 1 // below the team's title row
+		for i, p := range teamRows(side.s, m.st.Players, nums) {
+			m.rowPlayer[top+i] = strings.ToLower(p.Name)
 		}
+		lines = append(lines, TeamTable(side.s, side.t, m.st.Players, nums, m.focus, compact)...)
 	}
-	left = append(left, "", bold("Game log"))
+	return lines
+}
+
+// logLines is the game log title and up to n-1 newest events.
+func (m *matchModel) logLines(n int) []string {
+	lines := []string{bold("Game log")}
 	if len(m.log) == 0 {
-		left = append(left, dim("events appear from the moment you connect"))
+		lines = append(lines, dim("events appear from the moment you connect"))
 	}
-	for i := 0; i < len(m.log) && len(left) < body; i++ {
-		left = append(left, FormatEvent(m.log[i]))
+	for i := 0; i < len(m.log) && len(lines) < n; i++ {
+		lines = append(lines, FormatEvent(m.log[i]))
 	}
-	for i := range left {
-		left[i] = ansi.Truncate(left[i], leftW, "")
+	return lines
+}
+
+func block(lines []string, w, h int) string {
+	for i := range lines {
+		lines[i] = ansi.Truncate(lines[i], w, "")
 	}
-	leftBlock := lipgloss.NewStyle().Width(leftW).Height(body).MaxHeight(body).Render(strings.Join(left, "\n"))
-	toggle := m.directorSwitch(mapW)
-	m.switchX = leftW + 1 // clicks on row 0 from here over the switch toggle it
-	mapH := body - 1      // row 0 is the director switch
-	mapStr := m.fx.overlay(m.mapView(mapW, mapH, nums), time.Now())
-	mapBlock := toggle + "\n" + lipgloss.Place(mapW, mapH, lipgloss.Left, lipgloss.Top, mapStr)
-	offX, offY := leftW+1, 1 // the map sits right next to the scoreboard, under the switch
+	return lipgloss.NewStyle().Width(w).Height(h).MaxHeight(h).Render(strings.Join(lines, "\n"))
+}
+
+// view lays the screen out side by side (scoreboard + log | map) when it is wide
+// enough, else stacked (scoreboard / map / log), e.g. on a phone.
+func (m *matchModel) view() string {
+	body := m.h - 1 // footer
+	var nums map[string]int
+	if m.st != nil {
+		nums = PlayerNumbers(m.st.Players)
+	}
+	var screen string
+	var mapX, mapY int // screen cell of the map block (under the director switch)
+	if m.w >= wideMin {
+		leftW := min(leftMax, m.w/2) // scoreboard needs ~76 cols; the map gets the rest
+		mapW, mapH := m.w-leftW-1, body-1
+		left := m.panel(nums, false)
+		left = append(left, "")
+		left = append(left, m.logLines(body-len(left))...)
+		m.panelW, m.switchX, m.switchY = leftW, leftW+1, 0
+		mapX, mapY = leftW+1, 1
+		toggle := m.directorSwitch(mapW)
+		mapStr := m.fx.overlay(m.mapView(mapW, mapH, nums), time.Now())
+		right := toggle + "\n" + lipgloss.Place(mapW, mapH, lipgloss.Left, lipgloss.Top, mapStr)
+		screen = lipgloss.JoinHorizontal(lipgloss.Top, block(left, leftW, body), " ", right)
+	} else {
+		top := m.panel(nums, m.w < compactMax)
+		logN := max(logMin, (body-len(top))/5)
+		mapH := max(4, body-len(top)-1-logN)
+		m.panelW, m.switchX, m.switchY = m.w, 0, len(top)
+		mapX, mapY = 0, len(top)+1
+		toggle := m.directorSwitch(m.w)
+		mapStr := m.fx.overlay(m.mapView(m.w, mapH, nums), time.Now())
+		screen = strings.Join([]string{
+			block(top, m.w, len(top)),
+			toggle,
+			lipgloss.Place(m.w, mapH, lipgloss.Left, lipgloss.Top, mapStr),
+			block(m.logLines(body-len(top)-1-mapH), m.w, body-len(top)-1-mapH),
+		}, "\n")
+	}
 	for _, lv := range m.levels {
-		lv.sx, lv.sy = offX+lv.ox, offY+lv.oy
+		lv.sx, lv.sy = mapX+lv.ox, mapY+lv.oy
 	}
 	if m.gfx == term.Kitty {
 		m.placeImages()
@@ -378,7 +422,7 @@ func (m *matchModel) view() string {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
 	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, " ", mapBlock) + "\n" + footer
+	return screen + "\n" + footer
 }
 
 var (

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dormonbear/gotv-tui/internal/director"
 	"github.com/dormonbear/gotv-tui/internal/gotv"
@@ -221,5 +222,45 @@ func TestDirectorWaitsForTheMap(t *testing.T) {
 	m := &matchModel{directing: true, moving: true}
 	if m.follow() == nil {
 		t.Fatal("the director loop should keep running until the map loads")
+	}
+}
+
+func TestNarrowScreensStackTheLayout(t *testing.T) {
+	for _, size := range [][2]int{{100, 40}, {50, 45}} {
+		m := testMatch(false)
+		m.w, m.h = size[0], size[1]
+		m.st = &gotv.State{Map: "de_test", Players: []gotv.Player{
+			{Name: "s1n", Side: gotv.T, Alive: true, HP: 100, Money: 4750, Gun: "AK-47", Pos: &gotv.Vec{X: 600, Y: -300}},
+			{Name: "dgt", Side: gotv.CT, Alive: true, HP: 100, Pos: &gotv.Vec{X: 300, Y: -700}},
+		}}
+		lines := strings.Split(m.view(), "\n")
+		for i, l := range lines {
+			if w := ansi.StringWidth(l); w > m.w {
+				t.Fatalf("%dx%d: line %d is %d wide: %q", m.w, m.h, i, w, plain(l))
+			}
+		}
+		if len(lines) != m.h {
+			t.Fatalf("%dx%d: %d lines", m.w, m.h, len(lines))
+		}
+		compact := m.w < compactMax
+		if strings.Contains(plain(lines[1]), "ADR") == compact {
+			t.Fatalf("%dx%d: compact=%v but header %q", m.w, m.h, compact, plain(lines[1]))
+		}
+		// header, CT title, dgt, T title, s1n: the switch is the next row
+		if m.switchY != 5 || !strings.Contains(plain(lines[5]), "DIRECTOR") {
+			t.Fatalf("%dx%d: switch at row %d: %q", m.w, m.h, m.switchY, plain(lines[m.switchY]))
+		}
+		m.mouse(tea.MouseMsg{X: m.switchX + 1, Y: m.switchY, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		if m.directing != true {
+			t.Fatalf("%dx%d: clicking the switch should turn the director on", m.w, m.h)
+		}
+		m.directing = false
+		m.view()
+		lv := m.levels[0]
+		px, py := lv.r.ToPx(600, -300)
+		m.mouse(tea.MouseMsg{X: int(float64(lv.sx) + px/2), Y: int(float64(lv.sy) + py/4), Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		if m.focus != "s1n" {
+			t.Fatalf("%dx%d: clicking s1n on the stacked map: focus %q", m.w, m.h, m.focus)
+		}
 	}
 }
