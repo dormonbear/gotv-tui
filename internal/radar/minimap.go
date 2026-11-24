@@ -109,6 +109,7 @@ type Opts struct {
 	Lower      bool // which level this map shows
 	LowerBelow *float64
 	Sites      []Site
+	Image      uint32 // kitty image id of this map; 0 draws it in half blocks
 }
 
 // Draw overlays the markers on this level over the static base, as ANSI rows.
@@ -116,6 +117,7 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 	CW, CH := base.CW, base.CH
 	top := append([]*term.RGB(nil), base.top...)
 	bot := append([]*term.RGB(nil), base.bot...)
+	tinted := make([]bool, CW*CH)
 	toCell := func(v gotv.Vec) (int, int) {
 		px, py := r.ToPx(v.X, v.Y)
 		return int(math.Floor(px / 2)), int(math.Floor(py / 4))
@@ -135,6 +137,7 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 					continue
 				}
 				i := yy*CW + xx
+				tinted[i] = true              // drawn as text: the image can't be tinted per frame
 				k := t * (1 - 0.35*d/(rc*rc)) // soft edge
 				for _, px := range []*[]*term.RGB{&top, &bot} {
 					under := term.Black
@@ -237,10 +240,23 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 	var sb strings.Builder
 	for cy := 0; cy < CH; cy++ {
 		sb.Reset()
+		inImage := false // placeholder colour already set
 		for cx := 0; cx < CW; cx++ {
 			i := cy*CW + cx
 			g, has := glyphs[i]
 			t, b := top[i], bot[i]
+			if o.Image != 0 && !has && !tinted[i] {
+				if !inImage {
+					sb.WriteString(term.ImageColor(o.Image))
+					inImage = true
+				}
+				sb.WriteString(term.Placeholder(cy, cx))
+				continue
+			}
+			if inImage {
+				sb.WriteString(term.Reset)
+				inImage = false
+			}
 			switch {
 			case has:
 				bg := g.bg
@@ -273,6 +289,9 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 			default:
 				sb.WriteByte(' ')
 			}
+		}
+		if inImage {
+			sb.WriteString(term.Reset)
 		}
 		rows[cy] = sb.String()
 	}

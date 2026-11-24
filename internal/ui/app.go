@@ -2,6 +2,8 @@
 package ui
 
 import (
+	"io"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
@@ -12,10 +14,12 @@ type App struct {
 	list  *listModel
 	match *matchModel
 	w, h  int
+	out   io.Writer // kitty image uploads; nil draws maps in half blocks
 }
 
-// New opens url directly when given, else starts on the source list.
-func New(url string) *App { return &App{w: 100, h: 40, match: pending(url)} }
+// New opens url directly when given, else starts on the source list. With out set,
+// maps are uploaded there as kitty images (it must be the program's output writer).
+func New(url string, out io.Writer) *App { return &App{w: 100, h: 40, match: pending(url), out: out} }
 
 func pending(url string) *matchModel {
 	if url == "" {
@@ -27,6 +31,7 @@ func pending(url string) *matchModel {
 func (a *App) Init() tea.Cmd {
 	if a.match != nil {
 		m, cmd := newMatch(a.match.url, a.w, a.h)
+		m.out = a.out
 		a.match = m
 		return cmd
 	}
@@ -85,6 +90,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		url, cmd := a.list.update(msg)
 		if url != "" {
 			m, start := newMatch(url, a.w, a.h)
+			m.out = a.out
 			a.match = m
 			return a, tea.Batch(cmd, start)
 		}

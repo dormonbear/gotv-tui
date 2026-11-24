@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"time"
@@ -70,9 +71,13 @@ type matchModel struct {
 	shot      *director.Shot
 	soon      []playback.Soon[gotv.Event] // events queued ahead of the screen
 	settling  bool                        // camera still moving to the last shot
-	camX      float64                     // camera centre, 1024 radar space
-	camY      float64
-	w, h      int
+	// kitty graphics: images go to out (nil: draw the map in half blocks)
+	out      io.Writer
+	sent     []sentImage // per level: what the terminal currently holds
+	lastSend time.Time
+	camX     float64 // camera centre, 1024 radar space
+	camY     float64
+	w, h     int
 }
 
 func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
@@ -260,11 +265,17 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			m.levels = append(m.levels, &levelMap{lower: lower, w: levelW, h: levelH, view: view, r: r, base: radar.BuildBase(r)})
 		}
 	}
+	m.sendImages()
 	var boxes []string
 	for i, lv := range m.levels {
+		var img uint32
+		if i < len(m.sent) && m.sent[i].ok {
+			img = imageID + uint32(i)
+		}
 		lines := radar.Draw(lv.r, lv.base, m.st, radar.Opts{
 			Kills: m.kills, Nums: nums, Now: time.Now(), Lower: lv.lower,
 			LowerBelow: a.Overview.LowerBelow, Sites: radar.SitesOn(a.Map, lv.lower, a.Overview.Sites),
+			Image: img,
 		})
 		if titleRows > 0 {
 			name := " upper"

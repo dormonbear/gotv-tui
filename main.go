@@ -3,12 +3,14 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
+	"github.com/dormonbear/gotv-tui/internal/term"
 	"github.com/dormonbear/gotv-tui/internal/ui"
 	"github.com/dormonbear/gotv-tui/internal/update"
 )
@@ -50,7 +52,18 @@ func main() {
 	if arg != "" {
 		url = feeds.NormalizeURL(arg)
 	}
-	if _, err := tea.NewProgram(ui.New(url), tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
+	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion()}
+	var images io.Writer // kitty graphics share the TUI's output, one writer at a time
+	if term.KittyGraphics() {
+		lw := term.NewLockedWriter(os.Stdout)
+		images = lw
+		opts = append(opts, tea.WithOutput(lw))
+	}
+	_, err := tea.NewProgram(ui.New(url, images), opts...).Run()
+	if images != nil {
+		term.DeleteImages(images)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

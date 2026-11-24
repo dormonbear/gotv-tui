@@ -19,3 +19,11 @@ func CellAspect() float64 {
 	}
 	return DefaultAspect
 }
+
+// CellPixels is the size of one cell in pixels, or 10x20 when the tty doesn't say.
+func CellPixels() (int, int) {
+	if w, h, ok := cellPixels(); ok {
+		return int(w + 0.5), int(h + 0.5)
+	}
+	return 10, 20
+}
