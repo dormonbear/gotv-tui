@@ -36,6 +36,7 @@ type (
 type levelMap struct {
 	lower bool
 	w, h  int
+	view  radar.Box
 	r     *radar.Raster
 	base  *radar.Base
 }
@@ -53,6 +54,9 @@ type matchModel struct {
 	levels  []*levelMap
 	loading string  // map being loaded
 	aspect  float64 // terminal cell height / width
+	zoom    float64 // camera: 1 = whole map
+	camX    float64 // camera centre, 1024 radar space
+	camY    float64
 	w, h    int
 }
 
@@ -129,8 +133,11 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		m.assets, m.levels = msg.a, nil
 		// both levels use the upper radar's crop so they share scale and line up
 		m.box = radar.OpaqueBox(msg.a.Upper)
+		m.resetCamera()
 	case tickMsg:
 		return tick()
+	case tea.KeyMsg:
+		m.cameraKey(msg.String())
 	}
 	return nil
 }
@@ -212,15 +219,16 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			levelW, levelH = w1, h1
 		}
 	}
-	if len(m.levels) != len(want) || m.levels[0].w != levelW || m.levels[0].h != levelH || m.levels[0].r.Aspect != m.aspect {
+	view := m.camera()
+	if len(m.levels) != len(want) || m.levels[0].w != levelW || m.levels[0].h != levelH || m.levels[0].r.Aspect != m.aspect || m.levels[0].view != view {
 		m.levels = nil
 		for _, lower := range want {
 			img := a.Upper
 			if lower {
 				img = a.Lower
 			}
-			r := radar.Rasterize(img, a.Overview, m.box, (levelW-2)*2, (levelH-2-titleRows)*4, m.aspect)
-			m.levels = append(m.levels, &levelMap{lower: lower, w: levelW, h: levelH, r: r, base: radar.BuildBase(r)})
+			r := radar.Rasterize(img, a.Overview, view, (levelW-2)*2, (levelH-2-titleRows)*4, m.aspect)
+			m.levels = append(m.levels, &levelMap{lower: lower, w: levelW, h: levelH, view: view, r: r, base: radar.BuildBase(r)})
 		}
 	}
 	var boxes []string
@@ -271,6 +279,50 @@ func (m *matchModel) view() string {
 	}
 	leftBlock := lipgloss.NewStyle().Width(leftW).Height(body).MaxHeight(body).Render(strings.Join(left, "\n"))
 	mapBlock := lipgloss.Place(mapW, body, lipgloss.Center, lipgloss.Center, m.mapView(mapW, body, nums))
-	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · %s · CSTV ~3min delay", m.status), m.w, ""))
+	zoom := ""
+	if m.zoom > 1 {
+		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
+	}
+	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · +/- zoom · ←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, " ", mapBlock) + "\n" + footer
+}
+
+const (
+	zoomStep = 1.25
+	panStep  = 0.2 // of the visible width/height
+)
+
+func (m *matchModel) resetCamera() {
+	m.zoom = 1
+	m.camX, m.camY = m.box.Center()
+}
+
+// camera is the radar area on screen. Both levels share it so they stay aligned.
+func (m *matchModel) camera() radar.Box {
+	v := m.box.View(m.camX, m.camY, m.zoom)
+	m.camX, m.camY = v.Center() // clamped at the map edge: panning back starts right away
+	return v
+}
+
+func (m *matchModel) cameraKey(k string) {
+	if m.assets == nil {
+		return
+	}
+	v := m.camera()
+	switch k {
+	case "+", "=":
+		m.zoom = min(radar.MaxZoom, m.zoom*zoomStep)
+	case "-", "_":
+		m.zoom = max(1, m.zoom/zoomStep)
+	case "0":
+		m.resetCamera()
+	case "left", "h":
+		m.camX -= v.W * panStep
+	case "right", "l":
+		m.camX += v.W * panStep
+	case "up", "k":
+		m.camY -= v.H * panStep
+	case "down", "j":
+		m.camY += v.H * panStep
+	}
 }

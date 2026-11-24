@@ -65,8 +65,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.list.w = a.w
 					return a, cmd
 				}
+				return a, a.list.refresh() // states change while a match is open
 			}
-			return a, nil
+			return a, a.match.update(msg)
 		}
 		if k == "q" && !a.list.editing() {
 			return a, a.quit()

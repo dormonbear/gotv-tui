@@ -40,8 +40,12 @@ var stateColor = map[feeds.State]lipgloss.Color{feeds.Live: "2", feeds.Stale: "3
 func newList(file string) (*listModel, tea.Cmd) {
 	m := &listModel{file: file, feeds: feeds.Load(file), status: map[string]feeds.Status{},
 		spin: spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("6"))))}
-	return m, tea.Batch(m.spin.Tick, m.probe(m.feeds...))
+	return m, m.refresh()
 }
+
+// refresh re-probes every source; also restarts the spinner, whose tick loop stops
+// while the match screen has the messages.
+func (m *listModel) refresh() tea.Cmd { return tea.Batch(m.spin.Tick, m.probe(m.feeds...)) }
 
 // probe clears the rows first so they show a spinner until their answer arrives.
 func (m *listModel) probe(list ...feeds.Feed) tea.Cmd {

@@ -85,7 +85,11 @@ func BuildBase(r *Raster) *Base {
 	edge := func(x, y int) bool {
 		i := (y*IW + x) * 4
 		for _, d := range nb {
-			if !floor(x+d[0], y+d[1]) {
+			nx, ny := x+d[0], y+d[1]
+			if nx < 0 || ny < 0 || nx >= IW || ny >= IH {
+				continue // the view's edge isn't a wall (matters when zoomed in)
+			}
+			if !floor(nx, ny) {
 				return true
 			}
 			j := ((y+d[1])*IW + x + d[0]) * 4

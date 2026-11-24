@@ -44,11 +44,12 @@ func TestResample(t *testing.T) {
 }
 
 func TestBuildBaseKeepsThinWall(t *testing.T) {
-	// 4x4 dots (2x1 cells) at SS=4; a 1px transparent column at x=6 splits two rooms
+	// 4x4 dots (2x1 cells) at SS=4; a 1px transparent column at x=7 splits two rooms,
+	// its sides (x=6, x=8) fall in different cells
 	r := &Raster{W: 4, H: 4, Pixels: make([]byte, 16*16*4)}
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			if x != 6 {
+			if x != 7 {
 				copy(r.Pixels[(y*16+x)*4:], []byte{80, 100, 110, 255})
 			}
 		}
@@ -114,5 +115,31 @@ func TestRasterizeKeepsScreenProportions(t *testing.T) {
 		if ratio := w / h; ratio < 1.95 || ratio > 2.05 {
 			t.Errorf("aspect %v: %dx%d dots -> screen ratio %.3f", aspect, r.W, r.H, ratio)
 		}
+	}
+}
+
+func TestBoxView(t *testing.T) {
+	b := Box{100, 200, 400, 200}
+	if v := b.View(300, 300, 1); v != b {
+		t.Fatalf("zoom 1 is the whole box: %+v", v)
+	}
+	if v := b.View(300, 300, 2); v != (Box{200, 250, 200, 100}) {
+		t.Fatalf("zoom 2 around the centre: %+v", v)
+	}
+	if v := b.View(0, 0, 2); v != (Box{100, 200, 200, 100}) {
+		t.Fatalf("clamped into the top-left corner: %+v", v)
+	}
+	if v := b.View(300, 300, 99); v.W != 100 {
+		t.Fatalf("zoom capped at MaxZoom: %+v", v)
+	}
+}
+
+func TestBuildBaseViewEdgeIsNoWall(t *testing.T) {
+	r := &Raster{W: 4, H: 4, Pixels: make([]byte, 16*16*4)} // all floor, cut by the view
+	for i := 0; i < len(r.Pixels); i += 4 {
+		copy(r.Pixels[i:], []byte{80, 100, 110, 255})
+	}
+	if b := BuildBase(r); b.dots[0] != 0 || b.dots[1] != 0 {
+		t.Fatalf("view edge drawn as a wall: %v", b.dots)
 	}
 }

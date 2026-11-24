@@ -135,3 +135,19 @@ func Rasterize(img *image.NRGBA, ov Overview, box Box, maxW, maxH int, aspect fl
 	h := max(1, int(math.Round(box.H*ky)))
 	return &Raster{W: w, H: h, Pixels: Resample(img, box, w*SS, h*SS), Aspect: aspect, ov: ov, box: box, k: k, ky: ky}
 }
+
+// MaxZoom: past ~4x a braille dot is finer than a radar pixel and only blurs.
+const MaxZoom = 4.0
+
+// View is the part of b shown at zoom z around (cx, cy), both in 1024 radar space.
+// It keeps b's shape (so the framed map keeps its size) and stays inside b.
+func (b Box) View(cx, cy, z float64) Box {
+	z = min(MaxZoom, max(1, z))
+	w, h := b.W/z, b.H/z
+	x := min(max(cx-w/2, b.X), b.X+b.W-w)
+	y := min(max(cy-h/2, b.Y), b.Y+b.H-h)
+	return Box{x, y, w, h}
+}
+
+// Center is the middle of b.
+func (b Box) Center() (float64, float64) { return b.X + b.W/2, b.Y + b.H/2 }
