@@ -18,7 +18,8 @@ export type PlayerState = {
   deaths: number
   assists: number
   adr: number
-  weapon: string | null
+  gun: string | null // primary if carried, else pistol
+  nades: Nade[] // carried grenades, one entry per grenade
   hasBomb: boolean
 }
 export type UtilityKind = 'smoke' | 'fire' | 'he' | 'flash' | 'molotov' | 'decoy' | 'smokeNade'
@@ -76,6 +77,22 @@ const REASON: Record<number, string> = {
   [WinRoundReason.CT_SURRENDER]: 'Surrender',
 }
 
+export type Nade = 'he' | 'flash' | 'smoke' | 'fire' | 'decoy'
+const NADE_ITEMS: Record<string, Nade> = { hegrenade: 'he', flashbang: 'flash', smokegrenade: 'smoke', molotov: 'fire', incgrenade: 'fire', decoy: 'decoy' }
+const NADE_ORDER: Nade[] = ['he', 'flash', 'smoke', 'fire', 'decoy']
+const PISTOLS = new Set(['glock', 'usp_silencer', 'hkp2000', 'p250', 'fiveseven', 'tec9', 'cz75a', 'deagle', 'revolver', 'elite'])
+const NOT_GUNS = new Set(['knife', 'c4', 'taser', ...Object.keys(NADE_ITEMS)])
+
+export function loadout(items: readonly { name: string; quantity: number }[]): { gun: string | null; nades: Nade[] } {
+  const guns = items.filter((i) => !NOT_GUNS.has(i.name) && !i.name.startsWith('knife'))
+  const gun = guns.find((i) => !PISTOLS.has(i.name)) ?? guns[0]
+  const nades = items
+    .filter((i) => NADE_ITEMS[i.name])
+    .flatMap((i) => Array<Nade>(Math.max(1, i.quantity)).fill(NADE_ITEMS[i.name]))
+    .sort((a, b) => NADE_ORDER.indexOf(a) - NADE_ORDER.indexOf(b))
+  return { gun: gun?.name ?? null, nades }
+}
+
 const NADES: [string, UtilityKind][] = [
   ['CHEGrenadeProjectile', 'he'],
   ['CFlashbangProjectile', 'flash'],
@@ -131,7 +148,7 @@ function snapshot(p: DemoReader, map: string, tps: number): MatchState {
       assists: c.assists,
       // m_matchStats damage is left at 0 by some servers; per-round stats are always filled
       adr: Math.max(c.damage, c.perRoundStats.reduce((a: number, r: any) => a + (r?.m_iDamage ?? 0), 0)) / rounds,
-      weapon: inv?.activeItem?.name ?? null,
+      ...loadout(inv?.items ?? []),
       hasBomb: inv?.items.some((i) => i.className === 'CC4') ?? false,
     })
   }

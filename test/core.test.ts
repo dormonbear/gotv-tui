@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { feedState, isRelayUrl, loadFeeds, normalizeUrl, PRESETS, saveFeeds } from '../src/feeds.ts'
 import { formatEvent } from '../src/format.ts'
-import { entityOrigin, type MatchState, type PlayerState } from '../src/gotv.ts'
-import { parseOverview, sitesOn, type Radar } from '../src/maps.ts'
+import { entityOrigin, loadout, type MatchState, type PlayerState } from '../src/gotv.ts'
+import { parseOverview, resample, sitesOn, type Radar } from '../src/maps.ts'
 import { buildBase, drawMinimap, facing, levelOf } from '../src/minimap.ts'
 import { Playback } from '../src/playback.ts'
+import { assetName } from '../src/update.ts'
 import { applyEvent, type MatchData } from '../src/ui/useMatch.ts'
 
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '')
@@ -60,7 +61,7 @@ test('drawMinimap places players by braille cell and draws only its own level', 
   const W = 20, H = 20
   const radar: Radar = { width: W, height: H, ss: 1, pixels: new Uint8Array(W * H * 4).fill(255), toPx: (x, y) => [x, y], normPx: (nx, ny) => [nx * W, ny * H] }
   const pl = (name: string, x: number, y: number, z: number): PlayerState => ({
-    name, side: 'T', pos: { x, y, z }, yaw: 0, alive: true, hp: 100, armor: 0, helmet: false, defuser: false, money: 0, kills: 0, deaths: 0, assists: 0, adr: 0, weapon: null, hasBomb: false,
+    name, side: 'T', pos: { x, y, z }, yaw: 0, alive: true, hp: 100, armor: 0, helmet: false, defuser: false, money: 0, kills: 0, deaths: 0, assists: 0, adr: 0, gun: null, nades: [], hasBomb: false,
   })
   const st = { players: [pl('a', 7, 9, 0), pl('b', 1, 1, -600)], utility: [], bomb: null } as unknown as MatchState
   const base = buildBase(radar)
@@ -97,6 +98,21 @@ test('buildBase keeps a 1px wall that a plain downscale would blur away', () => 
   assert.equal(b.CW, 2)
   assert.ok(b.dots[0] & 0x8 && b.dots[1] & 0x1, 'dots light up on both sides of the wall')
   assert.ok(b.bg[0] && b.bg[1], 'both cells are floor')
+})
+
+test('loadout picks the primary gun and lists grenades in a fixed order', () => {
+  const it = (name: string, quantity = 1) => ({ name, quantity })
+  assert.deepEqual(loadout([it('knife'), it('glock'), it('ak47'), it('flashbang', 2), it('hegrenade'), it('c4')]), { gun: 'ak47', nades: ['he', 'flash', 'flash'] })
+  assert.deepEqual(loadout([it('knife'), it('deagle'), it('incgrenade'), it('smokegrenade')]), { gun: 'deagle', nades: ['smoke', 'fire'] })
+  assert.deepEqual(loadout([it('knife')]), { gun: null, nades: [] })
+})
+
+test('resample averages by alpha and maps the 1024-space box onto the image', () => {
+  // 2x2 image: left column opaque red, right column transparent
+  const data = new Uint8Array([255, 0, 0, 255, 0, 0, 0, 0, 255, 0, 0, 255, 0, 0, 0, 0])
+  const img = { width: 2, height: 2, data }
+  assert.deepEqual([...resample(img, { x: 0, y: 0, w: 1024, h: 1024 }, 1, 1)], [255, 0, 0, 127]) // colour kept, half coverage (127.5 truncated)
+  assert.deepEqual([...resample(img, { x: 512, y: 0, w: 512, h: 1024 }, 1, 1)], [0, 0, 0, 0]) // right half only
 })
 
 test('facing maps yaw to an arrow and screen offset (north is up)', () => {
@@ -140,4 +156,12 @@ test('Playback releases a burst smoothly at wall-clock pace', () => {
   assert.equal(pb.step(250).frame, 256) // stale queue flushed in one go, no slow crawl
   pb.pushFrame(1004, 1004)
   assert.equal(pb.step(312.5).frame, null) // play is now ~908: 1000 not due yet
+})
+
+test('assetName maps platform/arch to release asset names', () => {
+  assert.equal(assetName('darwin', 'arm64'), 'gotv-tui-darwin-arm64')
+  assert.equal(assetName('linux', 'x64'), 'gotv-tui-linux-x64')
+  assert.equal(assetName('win32', 'x64'), 'gotv-tui-windows-x64.exe')
+  assert.equal(assetName('freebsd', 'x64'), null)
+  assert.equal(assetName('linux', 'ia32'), null)
 })

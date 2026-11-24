@@ -1,4 +1,4 @@
-import { Resvg } from '@resvg/resvg-js'
+import { PNG } from 'pngjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -69,9 +69,37 @@ export type Box = { x: number; y: number; w: number; h: number } // in 1024 rada
 export const isFloor = (px: Uint8Array, i: number) =>
   px[i * 4 + 3] > 40 && px[i * 4] * 0.3 + px[i * 4 + 1] * 0.59 + px[i * 4 + 2] * 0.11 >= 40
 
-const svgOf = (png: Buffer, b: Box) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${b.w}" height="${b.h}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}">` +
-  `<image width="1024" height="1024" href="data:image/png;base64,${png.toString('base64')}"/></svg>`
+type Image = { width: number; height: number; data: Uint8Array } // RGBA
+const decoded = new WeakMap<Buffer, Image>()
+const decode = (png: Buffer): Image => {
+  let img = decoded.get(png)
+  if (!img) decoded.set(png, (img = PNG.sync.read(png)))
+  return img
+}
+
+// Area-average resample of `box` (1024 radar space) into outW x outH RGBA pixels.
+// Pure JS, so the single-file binary needs no native image library.
+export function resample(img: Image, box: Box, outW: number, outH: number): Uint8Array {
+  const out = new Uint8Array(outW * outH * 4)
+  const sx = (box.w / outW) * (img.width / 1024), sy = (box.h / outH) * (img.height / 1024)
+  const ox = (box.x * img.width) / 1024, oy = (box.y * img.height) / 1024
+  for (let y = 0; y < outH; y++) {
+    const y0 = Math.max(0, Math.floor(oy + y * sy)), y1 = Math.min(img.height, Math.max(y0 + 1, Math.floor(oy + (y + 1) * sy)))
+    for (let x = 0; x < outW; x++) {
+      const x0 = Math.max(0, Math.floor(ox + x * sx)), x1 = Math.min(img.width, Math.max(x0 + 1, Math.floor(ox + (x + 1) * sx)))
+      let r = 0, g = 0, b = 0, a = 0, n = 0
+      for (let yy = y0; yy < y1; yy++)
+        for (let xx = x0; xx < x1; xx++) {
+          const i = (yy * img.width + xx) * 4, al = img.data[i + 3]
+          r += img.data[i] * al, g += img.data[i + 1] * al, b += img.data[i + 2] * al, a += al, n++
+        }
+      const o = (y * outW + x) * 4
+      if (a > 0) (out[o] = r / a), (out[o + 1] = g / a), (out[o + 2] = b / a)
+      out[o + 3] = n ? a / n : 0
+    }
+  }
+  return out
+}
 
 // Bounding box of the floor area of all images (radars carry wide empty margins).
 // Sparse rows/columns (< 8% of the densest one) are ignored so stray specks don't widen it.
@@ -80,11 +108,11 @@ export function opaqueBox(pngs: Buffer[]): Box {
   const EDGE = 8
   const rows = new Array(N).fill(0), cols = new Array(N).fill(0)
   for (const png of pngs) {
-    const img = new Resvg(svgOf(png, { x: 0, y: 0, w: 1024, h: 1024 }), { fitTo: { mode: 'width', value: N } }).render()
+    const pixels = resample(decode(png), { x: 0, y: 0, w: 1024, h: 1024 }, N, N)
     // skip the outer margin: some radars (e.g. nuke lower) have a frame line around the image
     for (let y = EDGE; y < N - EDGE; y++)
       for (let x = EDGE; x < N - EDGE; x++)
-        if (isFloor(img.pixels, y * N + x)) (rows[y]++, cols[x]++)
+        if (isFloor(pixels, y * N + x)) (rows[y]++, cols[x]++)
   }
   const cut = (a: number[]) => Math.max(6, Math.max(...a) * 0.08)
   const cx = cut(cols), cy = cut(rows)
@@ -98,13 +126,13 @@ export function opaqueBox(pngs: Buffer[]): Box {
 // Renders the cropped radar to fit maxW x maxH dots, keeping aspect ratio.
 export function rasterize(png: Buffer, ov: Overview, box: Box, maxW: number, maxH: number): Radar {
   const w = Math.max(8, Math.min(maxW, Math.floor((maxH * box.w) / box.h)))
-  const img = new Resvg(svgOf(png, box), { fitTo: { mode: 'width', value: w * SS } }).render()
-  const k = img.width / SS / box.w // dots per radar pixel
+  const h = Math.max(1, Math.round((w * box.h) / box.w))
+  const k = w / box.w // dots per radar pixel
   return {
-    width: Math.floor(img.width / SS),
-    height: Math.floor(img.height / SS),
+    width: w,
+    height: h,
     ss: SS,
-    pixels: img.pixels,
+    pixels: resample(decode(png), box, w * SS, h * SS),
     toPx: (x, y) => [((x - ov.posX) / ov.scale - box.x) * k, ((ov.posY - y) / ov.scale - box.y) * k],
     normPx: (nx, ny) => [(nx * 1024 - box.x) * k, (ny * 1024 - box.y) * k],
   }

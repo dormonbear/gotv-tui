@@ -11,22 +11,40 @@ relay: scoreboard, kill feed and a live radar with every player's position.
   [2mlml/cs2-radar-images](https://github.com/2mlml/cs2-radar-images) and cached in
   `~/.cache/gotv-tui/radar`. Two-level maps (Nuke, Train, Vertigo) show both levels.
 
-## Run
+## Install
 
-Requires Node.js 22+ (or build the binary with Bun).
+macOS / Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dormonbear/gotv-tui/main/install.sh | sh
+gotv-tui            # pick a source from the list
+gotv-tui update     # update to the latest release
+```
+
+The script downloads the single-file binary for your platform from the latest
+[release](https://github.com/dormonbear/gotv-tui/releases) into `~/.local/bin`
+(override with `GOTV_TUI_INSTALL_DIR`). On Windows, download
+`gotv-tui-windows-x64.exe` from the release page.
+
+Open a relay directly:
+
+```sh
+gotv-tui https://cstv.fragnet.net/a
+gotv-tui 'playcast "https://cstv.fragnet.net/a"'
+```
+
+## Run from source
+
+Requires Node.js 22+.
 
 ```sh
 npm install
-npm start                                   # pick a source from the list
-npx tsx src/main.tsx https://cstv.fragnet.net/a   # or open a relay directly
-npx tsx src/main.tsx 'playcast "https://cstv.fragnet.net/a"'
+npm start
+npm run build     # single-file binary for this machine (needs Bun) -> dist/gotv-tui
 ```
 
-Single-file binary (Bun):
-
-```sh
-npm run build     # -> dist/gotv-tui
-```
+Releases: bump `version` in package.json, then push a matching tag (`v0.1.0`); the
+release workflow builds macOS / Linux / Windows binaries and publishes them.
 
 ## Keys
 

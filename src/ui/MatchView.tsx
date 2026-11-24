@@ -8,7 +8,7 @@ import { playerNumbers, TeamTable } from './Scoreboard.tsx'
 import { useMatch } from './useMatch.ts'
 
 const PANEL_ROWS = 1 + 6 + 6 + 1 // header, CT table, T table, spacer
-const LEFT_W = 76
+const LEFT_W = 80
 
 function useNow(ms: number) {
   const [now, setNow] = useState(Date.now())
