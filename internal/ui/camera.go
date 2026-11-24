@@ -214,13 +214,25 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 }
 
 const (
-	followEase = 0.12 // share of the way to the shot covered per frame (~0.6 s to settle)
+	followTime = 0.45 // spring smoothing time, seconds: ~1 s to settle, no velocity jumps
 	holdMove   = 0.12 // dead zone: ignore shot moves under this share of the view...
 	holdZoom   = 0.15 // ...and zoom changes under this (log scale)
 )
 
+// smoothDamp moves cur towards target on a critically damped spring (Game Programming
+// Gems 4): velocity stays continuous, so starts, retargets and stops never jerk.
+func smoothDamp(cur, target float64, vel *float64, dt float64) float64 {
+	omega := 2 / followTime
+	x := omega * dt
+	e := 1 / (1 + x + 0.48*x*x + 0.235*x*x*x)
+	change := cur - target
+	temp := (*vel + omega*change) * dt
+	*vel = (*vel - omega*temp) * e
+	return target + (change+temp)*e
+}
+
 func (m *matchModel) toggleDirector() tea.Cmd {
-	m.directing, m.focus = !m.directing, ""
+	m.directing, m.focus, m.vel = !m.directing, "", [3]float64{}
 	if !m.directing {
 		return nil
 	}
@@ -266,13 +278,14 @@ func (m *matchModel) follow() tea.Cmd {
 	far := math.Abs(tx-m.camX) > holdMove*v.W || math.Abs(ty-m.camY) > holdMove*v.H || math.Abs(math.Log(tz/m.zoom)) > holdZoom
 	if far || m.settling {
 		m.settling = true
-		m.camX += (tx - m.camX) * followEase
-		m.camY += (ty - m.camY) * followEase
-		m.zoom *= math.Pow(tz/m.zoom, followEase)
+		dt := frameTime.Seconds()
+		m.camX = smoothDamp(m.camX, tx, &m.vel[0], dt)
+		m.camY = smoothDamp(m.camY, ty, &m.vel[1], dt)
+		m.zoom = math.Exp(smoothDamp(math.Log(m.zoom), math.Log(tz), &m.vel[2], dt)) // zoom eases in log space
 		m.zoomTo = m.zoom
 		// once moving, go all the way: stopping at the dead-zone edge looks unfinished
-		if math.Abs(tx-m.camX) < 0.01*v.W && math.Abs(ty-m.camY) < 0.01*v.H && math.Abs(math.Log(tz/m.zoom)) < 0.01 {
-			m.settling = false
+		if math.Abs(tx-m.camX) < 0.005*v.W && math.Abs(ty-m.camY) < 0.005*v.H && math.Abs(math.Log(tz/m.zoom)) < 0.005 {
+			m.settling, m.vel = false, [3]float64{}
 		}
 	}
 	return animTick()

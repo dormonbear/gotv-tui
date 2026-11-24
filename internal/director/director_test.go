@@ -99,3 +99,19 @@ func TestFightsStayOnOneLevel(t *testing.T) {
 		t.Fatalf("players on different levels framed as a fight: %+v", s)
 	}
 }
+
+func TestWholeMapHoldsBeforeTheNextFight(t *testing.T) {
+	d := New()
+	t0 := time.Unix(0, 0)
+	far := &gotv.State{Players: []gotv.Player{pl("a", gotv.T, 0, 0), pl("b", gotv.CT, 4000, 4000)}}
+	d.Update(t0, state(), nil, nil) // on a fight
+	if s := d.Update(t0.Add(5*time.Second), far, nil, nil); s != nil {
+		t.Fatal("setup: fight over, expected the whole map")
+	}
+	if s := d.Update(t0.Add(6*time.Second), state(), nil, nil); s != nil {
+		t.Fatalf("zoomed straight back in 1 s after pulling out: %+v", s)
+	}
+	if s := d.Update(t0.Add(7500*time.Millisecond), state(), nil, nil); s == nil {
+		t.Fatal("still on the whole map after wideHold")
+	}
+}

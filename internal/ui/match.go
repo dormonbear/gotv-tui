@@ -72,6 +72,7 @@ type matchModel struct {
 	shot      *director.Shot
 	soon      []playback.Soon[gotv.Event] // events queued ahead of the screen
 	settling  bool                        // camera still moving to the last shot
+	vel       [3]float64                  // camera spring velocity: x, y, log zoom
 	switchX   int                         // screen cell where the director switch starts
 	switchY   int
 	panelW    int            // width of the scoreboard (clicks there select players)
