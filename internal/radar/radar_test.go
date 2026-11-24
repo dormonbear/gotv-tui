@@ -168,3 +168,28 @@ func TestDrawLeavesMapCellsBlankOverAnImage(t *testing.T) {
 		t.Fatalf("row 1: %q", rows[1])
 	}
 }
+
+func TestNamesWhereTheyFitNumbersElsewhere(t *testing.T) {
+	const W, H = 60, 16 // 30x4 cells
+	r := &Raster{W: W, H: H, Pixels: make([]byte, W*SS*H*SS*4), Aspect: 2, ov: Overview{Scale: 1}, k: 1, ky: 1}
+	p := func(name string, x, row float64) gotv.Player {
+		return gotv.Player{Name: name, Side: gotv.T, Alive: true, Yaw: 180, Pos: &gotv.Vec{X: x * 2, Y: -row * 4}}
+	}
+	st := &gotv.State{Players: []gotv.Player{
+		p("s1n", 2, 0),     // room to the right: named
+		p("JBa", 10, 2),    // ...
+		p("Lake", 12, 2),   // only one cell gap after JBa's label would be needed: JBa falls back
+		p("Swisher", 2, 3), // fits
+	}}
+	rows := Draw(r, BuildBase(r), st, Opts{Names: true, Nums: map[string]int{"s1n": 1, "jba": 2, "lake": 3, "swisher": 4}})
+	got := func(y int) string { return strings.TrimRight(string(strip(rows[y])), " ") }
+	if !strings.Contains(got(0), " s1n") || !strings.Contains(got(3), " Swisher") {
+		t.Fatalf("named rows: %q / %q", got(0), got(3))
+	}
+	if row := got(2); strings.Contains(row, "JBa") || !strings.Contains(row, "2") || !strings.Contains(row, " Lake") {
+		t.Fatalf("crowded row: %q (JBa should fall back to its number, Lake gets its name)", row)
+	}
+	if rows := Draw(r, BuildBase(r), st, Opts{Nums: map[string]int{"s1n": 1}}); strings.Contains(string(strip(rows[0])), "s1n") {
+		t.Fatal("names shown with Names off")
+	}
+}

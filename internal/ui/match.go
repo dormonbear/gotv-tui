@@ -270,6 +270,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			Kills: m.kills, Nums: nums, Now: time.Now(), Lower: lv.lower,
 			LowerBelow: a.Overview.LowerBelow, Sites: radar.SitesOn(a.Map, lv.lower, a.Overview.Sites),
 			ImageUnder: m.images(),
+			Names:      m.zoom >= namesFrom,
 		})
 		if titleRows > 0 {
 			name := " upper"

@@ -16,6 +16,7 @@ const (
 	panStep   = 0.2  // of the visible width/height
 	easing    = 0.3  // share of the remaining zoom (in log scale) covered per frame
 	frameTime = 16 * time.Millisecond
+	namesFrom = 1.5 // zoom from which players are labelled by name where it fits
 )
 
 // anchor is a radar point (ax, ay) kept at the same place on screen, given as a

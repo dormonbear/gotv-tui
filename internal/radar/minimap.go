@@ -2,6 +2,7 @@ package radar
 
 import (
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -110,6 +111,7 @@ type Opts struct {
 	LowerBelow *float64
 	Sites      []Site
 	ImageUnder bool // the terminal shows the radar image under blank cells
+	Names      bool // label players by name where it fits (zoomed in)
 }
 
 // Draw overlays the markers on this level over the static base, as ANSI rows.
@@ -212,27 +214,30 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 				put(*pl.Pos, glyph{ch: "✕", fg: term.Mix(teamColor(pl.Side), term.Black, 0.2), bold: true}, false)
 			}
 		}
+		labels := playerLabels(st.Players, o, here, toCell, CW)
 		for _, pl := range st.Players {
 			if pl.Alive && pl.Pos != nil && here(*pl.Pos) {
 				cx, cy := toCell(*pl.Pos)
 				ch, dx, dy := Facing(pl.Yaw)
+				if w := len([]rune(labels[pl.Name])); w > 1 && dx > 0 {
+					cx += w - 1 // facing right: the arrow goes after the name
+				}
 				putCell(cx+dx, cy+dy, glyph{ch: ch, fg: teamColor(pl.Side), bold: true}, false)
 			}
 		}
 		for _, pl := range st.Players {
-			if !pl.Alive || pl.Pos == nil {
+			if !pl.Alive || pl.Pos == nil || !here(*pl.Pos) {
 				continue
-			}
-			ch := "●"
-			if n, ok := o.Nums[strings.ToLower(pl.Name)]; ok {
-				ch = string(rune('0' + n))
 			}
 			fg := term.Black
 			if pl.HasBomb {
 				fg = red
 			}
 			c := teamColor(pl.Side)
-			put(*pl.Pos, glyph{ch: ch, fg: fg, bg: &c, bold: true}, true)
+			cx, cy := toCell(*pl.Pos)
+			for i, r := range []rune(labels[pl.Name]) {
+				putCell(cx+i, cy, glyph{ch: string(r), fg: fg, bg: &c, bold: true}, true)
+			}
 		}
 	}
 
@@ -284,4 +289,61 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 		rows[cy] = sb.String()
 	}
 	return rows
+}
+
+// maxName is the longest name shown on the map; longer ones are cut.
+const maxName = 10
+
+// playerLabels picks what marks each alive player on this level: the name when
+// Opts.Names is on and it fits without touching another player or label, else the
+// scoreboard number. Players are labelled left to right so the result is stable.
+func playerLabels(players []gotv.Player, o Opts, here func(gotv.Vec) bool, toCell func(gotv.Vec) (int, int), CW int) map[string]string {
+	type mark struct {
+		name   string
+		cx, cy int
+	}
+	var ms []mark
+	for _, pl := range players {
+		if pl.Alive && pl.Pos != nil && here(*pl.Pos) {
+			cx, cy := toCell(*pl.Pos)
+			ms = append(ms, mark{pl.Name, cx, cy})
+		}
+	}
+	sort.Slice(ms, func(i, j int) bool { return ms[i].cx < ms[j].cx })
+	taken := map[[2]int]bool{}
+	for _, m := range ms {
+		taken[[2]int{m.cx, m.cy}] = true
+	}
+	out := map[string]string{}
+	for _, m := range ms {
+		num := "●"
+		if n, ok := o.Nums[strings.ToLower(m.name)]; ok {
+			num = string(rune('0' + n))
+		}
+		out[m.name] = num
+		if !o.Names {
+			continue
+		}
+		name := []rune(m.name)
+		if len(name) > maxName {
+			name = name[:maxName]
+		}
+		label := " " + string(name) + " "
+		w := len([]rune(label))
+		if m.cx+w > CW {
+			continue
+		}
+		fits := true
+		for x := m.cx + 1; x < m.cx+w+1 && fits; x++ { // +1: a gap before the next mark
+			fits = !taken[[2]int{x, m.cy}]
+		}
+		if !fits {
+			continue
+		}
+		for x := m.cx; x < m.cx+w; x++ {
+			taken[[2]int{x, m.cy}] = true
+		}
+		out[m.name] = label
+	}
+	return out
 }
