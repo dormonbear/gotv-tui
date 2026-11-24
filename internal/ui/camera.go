@@ -30,12 +30,12 @@ func animTick() tea.Cmd { return tea.Tick(frameTime, func(time.Time) tea.Msg { r
 
 func (m *matchModel) resetCamera() {
 	m.zoom, m.zoomTo, m.moving = 1, 1, false
-	m.camX, m.camY = m.box.Center()
+	m.camX, m.camY = m.frame.Center()
 }
 
 // camera is the radar area on screen. Both levels share it so they stay aligned.
 func (m *matchModel) camera() radar.Box {
-	v := m.box.View(m.camX, m.camY, m.zoom)
+	v := m.frame.View(m.camX, m.camY, m.zoom)
 	m.camX, m.camY = v.Center() // clamped at the map edge: panning back starts right away
 	return v
 }
@@ -60,7 +60,7 @@ func (m *matchModel) step() tea.Cmd {
 	}
 	m.zoom = z
 	a := m.anchor
-	w, h := m.box.W/z, m.box.H/z
+	w, h := m.frame.W/z, m.frame.H/z
 	m.camX, m.camY = a.ax-a.fx*w+w/2, a.ay-a.fy*h+h/2
 	if z == m.zoomTo {
 		m.moving = false
@@ -244,11 +244,11 @@ func (m *matchModel) direct() {
 func (m *matchModel) shotTarget() (x, y, z float64) {
 	s, ov := m.shot, m.assets.Overview
 	if s == nil {
-		x, y = m.box.Center()
+		x, y = m.frame.Center()
 		return x, y, 1
 	}
 	side := 2 * s.Radius / ov.Scale // radar px the shot needs both ways
-	z = min(radar.MaxZoom, max(1, min(m.box.W, m.box.H)/side))
+	z = min(radar.MaxZoom, max(1, min(m.frame.W, m.frame.H)/side))
 	return (s.X - ov.PosX) / ov.Scale, (ov.PosY - s.Y) / ov.Scale, z
 }
 

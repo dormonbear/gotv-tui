@@ -24,7 +24,8 @@ func testMatch(lower bool) *matchModel {
 	if lower {
 		a.Lower = img
 	}
-	m := &matchModel{w: 178, h: 40, aspect: 2.16, assets: a, box: radar.Box{X: 112, Y: 112, W: 800, H: 800}}
+	box := radar.Box{X: 112, Y: 112, W: 800, H: 800}
+	m := &matchModel{w: 178, h: 40, aspect: 2.16, assets: a, box: box, frame: box} // as when the map loads
 	m.resetCamera()
 	return m
 }
@@ -129,16 +130,16 @@ func TestDirectorCameraFollowsTheShot(t *testing.T) {
 		tol := 0.02 * b.W // the camera settles within ~1% of the shot
 		return math.Abs(a.X-b.X) < tol && math.Abs(a.Y-b.Y) < tol && math.Abs(a.W-b.W) < tol && math.Abs(a.H-b.H) < tol
 	}
-	// 1400 px is more than the 800 px map: the shot needs the whole map
-	if tx, ty, tz := m.shotTarget(); tz != 1 || !near(m.camera(), m.box.View(tx, ty, tz)) {
+	// 1400 px is more than the 800 px map: the shot needs the whole (filled) frame
+	if tx, ty, tz := m.shotTarget(); tz != 1 || !near(m.camera(), m.frame.View(tx, ty, tz)) {
 		t.Fatalf("view %+v, want the whole map", m.camera())
 	}
 	m.shot = &director.Shot{X: 300, Y: -400, Radius: 120} // 240 px wide: ~3.3x on (300, 400)
 	for i := 0; i < 120; i++ {
 		m.follow()
 	}
-	if tx, ty, tz := m.shotTarget(); tz < 3.3 || !near(m.camera(), m.box.View(tx, ty, tz)) {
-		t.Fatalf("view %+v x%.2f, want %+v", m.camera(), m.zoom, m.box.View(tx, ty, tz))
+	if tx, ty, tz := m.shotTarget(); tz < 3.3 || !near(m.camera(), m.frame.View(tx, ty, tz)) {
+		t.Fatalf("view %+v x%.2f, want %+v", m.camera(), m.zoom, m.frame.View(tx, ty, tz))
 	}
 	x, y := m.camX, m.camY
 	m.shot.X += 10 // small move: inside the dead zone, the camera holds

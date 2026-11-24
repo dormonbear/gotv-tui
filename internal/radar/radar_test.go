@@ -193,3 +193,16 @@ func TestNamesWhereTheyFitNumbersElsewhere(t *testing.T) {
 		t.Fatal("names shown with Names off")
 	}
 }
+
+func TestBoxFill(t *testing.T) {
+	tall := Box{300, 100, 400, 800}
+	if f := tall.Fill(1); f != (Box{224, 100, 800, 800}) {
+		t.Fatalf("tall map in a square area: %+v", f) // grows right, shifts left to stay inside
+	}
+	if f := tall.Fill(0.25); f != (Box{300, 0, 400, 1024}) {
+		t.Fatalf("tall map in a taller area: %+v", f) // capped at the whole radar height
+	}
+	if f := (Box{100, 100, 400, 400}).Fill(1); f != (Box{100, 100, 400, 400}) {
+		t.Fatalf("same shape: %+v", f)
+	}
+}

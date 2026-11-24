@@ -176,3 +176,17 @@ func ImagePNG(img *image.NRGBA, view Box, w, h int, alpha float64) ([]byte, erro
 	err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&b, out)
 	return b.Bytes(), err
 }
+
+// Fill grows b to the shape ratio (width/height) of the area it is shown in, keeping
+// its top-left corner where possible and staying inside the 1024x1024 radar, so the
+// view uses the whole area instead of leaving bands around the map.
+func (b Box) Fill(ratio float64) Box {
+	if b.W/b.H < ratio {
+		b.W = math.Min(b.H*ratio, 1024)
+		b.X = math.Min(b.X, 1024-b.W)
+	} else {
+		b.H = math.Min(b.W/ratio, 1024)
+		b.Y = math.Min(b.Y, 1024-b.H)
+	}
+	return b
+}
