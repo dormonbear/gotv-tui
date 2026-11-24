@@ -264,3 +264,38 @@ func TestNarrowScreensStackTheLayout(t *testing.T) {
 		}
 	}
 }
+
+func TestDirectorCameraHasNoVelocityJumps(t *testing.T) {
+	m := testMatch(false)
+	m.view()
+	m.toggleDirector()
+	m.shot = &director.Shot{X: 300, Y: -400, Radius: 120}
+	for i := 0; i < 200; i++ {
+		m.follow()
+	}
+	var steps []float64
+	x := m.camX
+	for i := 0; i < 90; i++ {
+		if i == 0 {
+			m.shot.X = 700 // leaves the dead zone
+		}
+		if i == 20 {
+			m.shot.X = 500 // retarget mid-flight
+		}
+		m.follow()
+		steps = append(steps, m.camX-x)
+		x = m.camX
+	}
+	top := 0.0
+	for _, s := range steps {
+		top = max(top, math.Abs(s))
+	}
+	if math.Abs(steps[0]) > 0.15*top {
+		t.Fatalf("camera jumped off the mark: first step %.2f of max %.2f", steps[0], top)
+	}
+	for i := 1; i < len(steps); i++ {
+		if math.Abs(steps[i]-steps[i-1]) > 0.2*top {
+			t.Fatalf("velocity jump at frame %d: %.2f -> %.2f (max %.2f)", i, steps[i-1], steps[i], top)
+		}
+	}
+}

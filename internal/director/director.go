@@ -19,12 +19,13 @@ import (
 const (
 	minShot   = 4 * time.Second
 	maxShot   = 8 * time.Second
-	cutMargin = 3.0  // an early cut needs this much more priority than the current shot
-	quiet     = 1.5  // below this nothing is worth framing: show the whole map
-	nearby    = 1500 // world units: enemies closer than this make a fight
-	margin    = 450  // world units of context around the framed players
-	minRadius = 700  // never zoom in tighter than this half-size
-	heatHalf  = 2.0  // seconds for damage heat to halve
+	cutMargin = 3.0             // an early cut needs this much more priority than the current shot
+	quiet     = 1.5             // below this nothing is worth framing: show the whole map
+	nearby    = 1500            // world units: enemies closer than this make a fight
+	margin    = 450             // world units of context around the framed players
+	minRadius = 700             // never zoom in tighter than this half-size
+	heatHalf  = 2.0             // seconds for damage heat to halve
+	wideHold  = 2 * time.Second // after pulling out to the whole map, stay there at least this long
 )
 
 // Priorities on Valve's 0..10 scale.
@@ -52,6 +53,7 @@ type hotspot struct {
 
 type Director struct {
 	cur     *hotspot
+	wideAt  time.Time // when the camera last pulled out to the whole map
 	since   time.Time
 	heat    map[string]float64 // recent damage taken, decaying
 	lastHP  map[string]int
@@ -83,7 +85,14 @@ func (d *Director) Update(now time.Time, st *gotv.State, soon []playback.Soon[go
 		now.Sub(d.since) >= minShot && (best == nil || best.prio > d.cur.prio || d.score(st, d.cur, lowerBelow) < quiet),
 		best != nil && best.prio >= d.cur.prio+cutMargin:
 		if best == nil || best.prio < quiet {
+			if d.cur != nil {
+				d.wideAt = now
+			}
 			d.cur = nil
+			return nil
+		}
+		// just pulled out: a passing skirmish doesn't yank it back in, an event does
+		if d.cur == nil && now.Sub(d.wideAt) < wideHold && len(best.extra) == 0 {
 			return nil
 		}
 		if d.cur == nil || !sameFight(d.cur, best) {
