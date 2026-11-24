@@ -42,8 +42,8 @@ go run .                        # or: go run . https://cstv.fragnet.net/a
 go build -o gotv-tui .
 ```
 
-Releases: push a tag (`v0.2.0`); the release workflow tests, cross-compiles
-macOS / Linux / Windows binaries and publishes them.
+Releases are automatic on merge to `main`, versioned from Conventional Commit
+subjects; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Keys
 

@@ -1,41 +1,65 @@
-# Push a tag like v0.2.0 to build static binaries for every platform and publish
-# them as a GitHub release. Pure Go (no cgo), so one Linux job cross-compiles all;
-# the Go linker ad-hoc signs darwin/arm64 binaries itself.
+# Every push to main: work out the next version from the Conventional Commit
+# subjects since the last tag (feat -> minor, fix/perf -> patch, others -> no
+# release), then test, cross-compile and publish a GitHub release with binaries.
+# Done in one job because a tag pushed with GITHUB_TOKEN doesn't trigger workflows.
 name: release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+        with:
+          fetch-depth: 0 # tags and history for the version bump
+      - name: next version
+        id: version
+        run: |
+          set -eu
+          last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          range=${last:+$last..HEAD}
+          next=$(git log --format=%s ${range:-HEAD} | sh scripts/next-version.sh "${last#v}")
+          echo "last=${last:-none} next=${next:-none}"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+      - if: steps.version.outputs.next != ''
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go vet ./...
-      - run: go test ./...
+      - if: steps.version.outputs.next != ''
+        run: go vet ./... && go test ./...
       - name: build
+        if: steps.version.outputs.next != ''
         env:
           CGO_ENABLED: '0'
+          VERSION: ${{ steps.version.outputs.next }}
         run: |
           set -eu
           mkdir dist
+          # pure Go: one runner cross-compiles all; the linker ad-hoc signs darwin/arm64
           for t in darwin/arm64/arm64 darwin/amd64/x64 linux/amd64/x64 linux/arm64/arm64 windows/amd64/x64; do
             IFS=/ read -r goos goarch arch <<< "$t"
             asset="gotv-tui-$goos-$arch"
             [ "$goos" = windows ] && asset="$asset.exe"
-            GOOS=$goos GOARCH=$goarch go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME#v}" -o "dist/$asset" .
+            GOOS=$goos GOARCH=$goarch go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$asset" .
             # install.sh and `gotv-tui update` fetch the .gz; Windows also gets the plain .exe
             gzip -9 -k "dist/$asset"
             [ "$goos" = windows ] || rm "dist/$asset"
           done
           ls -l dist
-      - run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+      - name: publish
+        if: steps.version.outputs.next != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.version.outputs.next }}
+        run: gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "$TAG" --generate-notes
