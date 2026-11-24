@@ -14,21 +14,23 @@ const SS = 4
 
 // Raster is a cropped radar scaled to a braille dot grid (one cell = 2x4 dots).
 type Raster struct {
-	W, H   int    // dots
-	Pixels []byte // RGBA, (W*SS) x (H*SS)
+	W, H   int     // dots
+	Pixels []byte  // RGBA, (W*SS) x (H*SS)
+	Aspect float64 // terminal cell height / width
 	ov     Overview
 	box    Box
-	k      float64 // dots per radar pixel
+	k      float64 // horizontal dots per radar pixel
+	ky     float64 // vertical dots per radar pixel (cells aren't always 1:2)
 }
 
 // ToPx maps world x/y to dot coordinates.
 func (r *Raster) ToPx(x, y float64) (float64, float64) {
-	return ((x-r.ov.PosX)/r.ov.Scale - r.box.X) * r.k, ((r.ov.PosY-y)/r.ov.Scale - r.box.Y) * r.k
+	return ((x-r.ov.PosX)/r.ov.Scale - r.box.X) * r.k, ((r.ov.PosY-y)/r.ov.Scale - r.box.Y) * r.ky
 }
 
 // NormPx maps 0..1 radar coords to dot coordinates.
 func (r *Raster) NormPx(nx, ny float64) (float64, float64) {
-	return (nx*1024 - r.box.X) * r.k, (ny*1024 - r.box.Y) * r.k
+	return (nx*1024 - r.box.X) * r.k, (ny*1024 - r.box.Y) * r.ky
 }
 
 // IsFloor: opaque and not near-black (lower-level radars ship a solid dark backdrop).
@@ -117,9 +119,19 @@ func OpaqueBox(imgs ...*image.NRGBA) Box {
 	return Box{float64(x0-1) * k, float64(y0-1) * k, float64(x1-x0+3) * k, float64(y1-y0+3) * k}
 }
 
-// Rasterize renders the cropped radar to fit maxW x maxH dots, keeping aspect ratio.
-func Rasterize(img *image.NRGBA, ov Overview, box Box, maxW, maxH int) *Raster {
-	w := max(8, min(maxW, int(float64(maxH)*box.W/box.H)))
-	h := max(1, int(math.Round(float64(w)*box.H/box.W)))
-	return &Raster{W: w, H: h, Pixels: Resample(img, box, w*SS, h*SS), ov: ov, box: box, k: float64(w) / box.W}
+// FitScale is the horizontal dots per radar pixel that fits box into maxW x maxH dots
+// on cells of the given aspect (height / width; a braille dot is 1/2 x 1/4 cell).
+func FitScale(box Box, maxW, maxH int, aspect float64) float64 {
+	return min(float64(maxW)/box.W, float64(maxH)*aspect/2/box.H)
+}
+
+// Rasterize renders the cropped radar to fit maxW x maxH dots, keeping the map's
+// proportions on screen for the terminal's cell aspect.
+func Rasterize(img *image.NRGBA, ov Overview, box Box, maxW, maxH int, aspect float64) *Raster {
+	k := FitScale(box, maxW, maxH, aspect)
+	w := max(8, int(k*box.W))
+	k = float64(w) / box.W
+	ky := k * 2 / aspect
+	h := max(1, int(math.Round(box.H*ky)))
+	return &Raster{W: w, H: h, Pixels: Resample(img, box, w*SS, h*SS), Aspect: aspect, ov: ov, box: box, k: k, ky: ky}
 }

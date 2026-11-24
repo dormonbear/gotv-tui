@@ -51,13 +51,14 @@ type matchModel struct {
 	assets  *radar.Assets
 	box     radar.Box
 	levels  []*levelMap
-	loading string // map being loaded
+	loading string  // map being loaded
+	aspect  float64 // terminal cell height / width
 	w, h    int
 }
 
 func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &matchModel{url: url, cancel: cancel, ch: make(chan tea.Msg, 64), status: "connecting...", w: w, h: h}
+	m := &matchModel{url: url, cancel: cancel, ch: make(chan tea.Msg, 64), status: "connecting...", w: w, h: h, aspect: term.CellAspect()}
 	send := func(msg tea.Msg, drop bool) {
 		if drop { // frames are superseded by the next one; never block the parser on them
 			select {
@@ -192,24 +193,34 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 		return dim(" loading map...")
 	}
 	want := []bool{false}
+	titleRows := 0 // single-level maps skip the title row (map name is in the header)
 	if a.Lower != nil {
-		want = []bool{false, true} // two-level maps sit side by side
+		want, titleRows = []bool{false, true}, 1
 	}
-	levelW := width / len(want)
-	titled := a.Lower != nil // single-level maps skip the title row (map name is in the header)
-	titleRows := 0
-	if titled {
-		titleRows = 1
+	// a framed level takes 2 border cols/rows plus its title row
+	fit := func(w, h int) (int, int, float64) {
+		return w, h, radar.FitScale(m.box, (w-2)*2, (h-2-titleRows)*4, m.aspect)
 	}
-	if len(m.levels) != len(want) || m.levels[0].w != levelW || m.levels[0].h != height {
+	levelW, levelH, _ := fit(width, height)
+	stacked := false
+	if len(want) == 2 { // two levels side by side or stacked, whichever draws bigger
+		w1, h1, side := fit(width/2, height)
+		w2, h2, stack := fit(width, height/2)
+		if stacked = stack > side; stacked {
+			levelW, levelH = w2, h2
+		} else {
+			levelW, levelH = w1, h1
+		}
+	}
+	if len(m.levels) != len(want) || m.levels[0].w != levelW || m.levels[0].h != levelH || m.levels[0].r.Aspect != m.aspect {
 		m.levels = nil
 		for _, lower := range want {
 			img := a.Upper
 			if lower {
 				img = a.Lower
 			}
-			r := radar.Rasterize(img, a.Overview, m.box, (levelW-2)*2, (height-2-titleRows)*4)
-			m.levels = append(m.levels, &levelMap{lower: lower, w: levelW, h: height, r: r, base: radar.BuildBase(r)})
+			r := radar.Rasterize(img, a.Overview, m.box, (levelW-2)*2, (levelH-2-titleRows)*4, m.aspect)
+			m.levels = append(m.levels, &levelMap{lower: lower, w: levelW, h: levelH, r: r, base: radar.BuildBase(r)})
 		}
 	}
 	var boxes []string
@@ -218,7 +229,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			Kills: m.kills, Nums: nums, Now: time.Now(), Lower: lv.lower,
 			LowerBelow: a.Overview.LowerBelow, Sites: radar.SitesOn(a.Map, lv.lower, a.Overview.Sites),
 		})
-		if titled {
+		if titleRows > 0 {
 			name := " upper"
 			if lv.lower {
 				name = " lower"
@@ -226,6 +237,9 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			lines = append([]string{dim(name)}, lines...)
 		}
 		boxes = append(boxes, frame.Render(strings.Join(lines, "\n")))
+	}
+	if stacked {
+		return lipgloss.JoinVertical(lipgloss.Center, boxes...)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, boxes...)
 }

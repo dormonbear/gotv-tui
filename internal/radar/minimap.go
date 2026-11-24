@@ -193,9 +193,10 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 	tint := func(v gotv.Vec, rad float64, c term.RGB, t float64) {
 		cx, cy := toCell(v)
 		rc := math.Max(1, rad*unit)
-		for yy := int(math.Floor(float64(cy) - rc/2)); float64(yy) <= float64(cy)+rc/2; yy++ {
+		for yy := int(math.Floor(float64(cy) - rc/r.Aspect)); float64(yy) <= float64(cy)+rc/r.Aspect; yy++ {
 			for xx := int(math.Floor(float64(cx) - rc)); float64(xx) <= float64(cx)+rc; xx++ {
-				d := float64((xx-cx)*(xx-cx) + 4*(yy-cy)*(yy-cy))
+				dy := float64(yy-cy) * r.Aspect // rows are taller than columns are wide
+				d := float64((xx-cx)*(xx-cx)) + dy*dy
 				if xx < 0 || yy < 0 || xx >= CW || yy >= CH || d > rc*rc {
 					continue
 				}
@@ -264,7 +265,7 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 			if b.State == gotv.BombDropped {
 				c = term.RGB{200, 200, 200}
 			}
-			put(b.Pos, glyph{ch: "B", fg: term.Black, bg: &c, bold: true}, true)
+			put(b.Pos, glyph{ch: "✱", fg: c, bold: true}, true) // not "B": reads as the B site label
 		}
 		for _, pl := range st.Players {
 			if !pl.Alive && pl.Pos != nil {

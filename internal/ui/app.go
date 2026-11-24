@@ -5,6 +5,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
+	"github.com/dormonbear/gotv-tui/internal/term"
 )
 
 type App struct {
@@ -40,6 +41,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.w, a.h = msg.Width, msg.Height
 		if a.match != nil {
 			a.match.w, a.match.h = a.w, a.h
+			a.match.aspect = term.CellAspect() // font or zoom may have changed
 		}
 		if a.list != nil {
 			a.list.w = a.w

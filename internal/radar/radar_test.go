@@ -61,7 +61,7 @@ func TestBuildBaseKeepsThinWall(t *testing.T) {
 
 func TestDrawPlacesPlayersPerLevel(t *testing.T) {
 	const W, H = 20, 20
-	r := &Raster{W: W, H: H, Pixels: make([]byte, W*SS*H*SS*4), ov: Overview{Scale: 1}, k: 1} // ToPx(x, y) = (x, -y)
+	r := &Raster{W: W, H: H, Pixels: make([]byte, W*SS*H*SS*4), Aspect: 2, ov: Overview{Scale: 1}, k: 1, ky: 1} // ToPx(x, y) = (x, -y)
 	for i := range r.Pixels {
 		r.Pixels[i] = 255
 	}
@@ -100,6 +100,19 @@ func TestFacing(t *testing.T) {
 	}{{0, "→", 1, 0}, {90, "↑", 0, -1}, {-135, "↙", -1, 1}, {359, "→", 1, 0}} {
 		if ch, dx, dy := Facing(c.yaw); ch != c.ch || dx != c.dx || dy != c.dy {
 			t.Errorf("yaw %v: %s %d %d", c.yaw, ch, dx, dy)
+		}
+	}
+}
+
+func TestRasterizeKeepsScreenProportions(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, 64, 64))
+	box := Box{0, 0, 200, 100} // 2:1 on screen whatever the cell shape
+	for _, aspect := range []float64{2, 2.16, 2.5} {
+		r := Rasterize(img, Overview{Scale: 1}, box, 400, 400, aspect)
+		w := float64(r.W) / 2          // cells wide (cell width = 1)
+		h := float64(r.H) / 4 * aspect // cells tall, in cell widths
+		if ratio := w / h; ratio < 1.95 || ratio > 2.05 {
+			t.Errorf("aspect %v: %dx%d dots -> screen ratio %.3f", aspect, r.W, r.H, ratio)
 		}
 	}
 }
