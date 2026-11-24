@@ -11,10 +11,29 @@ import (
 )
 
 type KillMark struct {
-	From   *gotv.Vec
-	To     gotv.Vec
-	Victim gotv.Side
-	At     time.Time
+	From     *gotv.Vec
+	To       gotv.Vec
+	Victim   gotv.Side
+	Headshot bool
+	At       time.Time
+}
+
+// killFx is the hit ring at the victim, hsShow how long a headshot stays marked.
+const killFx, hsShow = 0.6, 1.5
+
+var hsC = term.RGB{255, 215, 80}
+
+// fx is the kill's hit ring at age seconds: world radius, strength, colour (ok=false when over).
+func (k KillMark) fx(age float64) (rad, a float64, c term.RGB, ok bool) {
+	if age < 0 || age >= killFx {
+		return 0, 0, c, false
+	}
+	t := age / killFx
+	c = red
+	if k.Headshot {
+		c = hsC
+	}
+	return 40 + 160*t, 0.85 * (1 - t), c, true
 }
 
 const (
@@ -317,14 +336,37 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 			}
 		}
 	}
+	lineBits := map[int]byte{} // kill lines as braille dots: a thin line, not a staircase of cells
 	for _, k := range o.Kills {
-		if o.Now.Sub(k.At) > killShow || k.From == nil {
+		if o.Now.Sub(k.At) > killShow || !here(k.To) {
 			continue
 		}
-		for i := 1; i < 24; i++ {
-			t := float64(i) / 24
-			put(gotv.Vec{X: k.From.X + (k.To.X-k.From.X)*t, Y: k.From.Y + (k.To.Y-k.From.Y)*t, Z: k.To.Z}, glyph{ch: "·", fg: red, bold: true}, false)
+		if k.From != nil {
+			ax, ay := r.ToPx(k.From.X, k.From.Y)
+			bx, by := r.ToPx(k.To.X, k.To.Y)
+			n := int(math.Max(math.Abs(bx-ax), math.Abs(by-ay)))
+			for i := 2; i < n-1; i++ { // leave the two ends to the player and the cross
+				t := float64(i) / float64(n)
+				x, y := int(math.Floor(ax+(bx-ax)*t)), int(math.Floor(ay+(by-ay)*t))
+				if x < 0 || y < 0 || x/2 >= CW || y/4 >= CH {
+					continue
+				}
+				lineBits[(y/4)*CW+x/2] |= dotBit[y%4][x%2]
+			}
 		}
+		age := o.Now.Sub(k.At).Seconds()
+		if rad, a, c, ok := k.fx(age); ok {
+			tint(k.To, rad, c, a)
+		}
+		if k.Headshot && age < hsShow {
+			cx, cy := toCell(k.To)
+			putCell(cx, cy, glyph{ch: "✸", fg: hsC, bold: true}, true)
+			putCell(cx+1, cy, glyph{ch: "H", fg: hsC, bold: true}, true)
+			putCell(cx+2, cy, glyph{ch: "S", fg: hsC, bold: true}, true)
+		}
+	}
+	for i, b := range lineBits {
+		putCell(i%CW, i/CW, glyph{ch: string(rune(0x2800 + int(b))), fg: red, bold: true}, false)
 	}
 	if st != nil {
 		for _, u := range st.Utility {

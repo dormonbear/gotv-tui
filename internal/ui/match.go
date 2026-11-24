@@ -142,7 +142,7 @@ func (m *matchModel) applyEvent(e gotv.Event, now time.Time) {
 	case e.Kind == gotv.EvRoundStart:
 		m.kills = nil
 	case e.Kind == gotv.EvKill && e.To != nil:
-		m.kills = append(m.kills, radar.KillMark{From: e.From, To: *e.To, Victim: e.Victim.Side, At: now})
+		m.kills = append(m.kills, radar.KillMark{From: e.From, To: *e.To, Victim: e.Victim.Side, Headshot: e.Headshot, At: now})
 	}
 }
 
@@ -206,13 +206,12 @@ func mmss(s float64) string {
 	return fmt.Sprintf("%d:%02d", int(s)/60, int(s)%60)
 }
 
-// header puts the clocks first: when the line is cut to the column width only the
-// team names and map lose characters, never a countdown.
-func header(st *gotv.State) string {
+// roundStatus is the round clock, phase and bomb timers, shown above the map.
+func roundStatus(st *gotv.State) string {
 	var clock string
 	switch {
 	case st.Over:
-		clock = bold("match over")
+		return bold("match over")
 	case st.SecondsLeft < 0:
 		clock = bold("--:--")
 	case st.Warmup:
@@ -224,8 +223,8 @@ func header(st *gotv.State) string {
 	default:
 		clock = bold(mmss(st.SecondsLeft))
 	}
-	bomb := ""
-	if b := st.Bomb; b != nil && b.State != gotv.BombDropped && !st.Over {
+	clock = dim(fmt.Sprintf("R%d ", st.Round)) + clock
+	if b := st.Bomb; b != nil && b.State != gotv.BombDropped {
 		label := "BOMB"
 		if b.SecondsLeft >= 0 {
 			label += fmt.Sprintf(" %ds", int(math.Ceil(b.SecondsLeft)))
@@ -236,13 +235,17 @@ func header(st *gotv.State) string {
 				label += fmt.Sprintf(" %.1fs", b.DefuseLeft)
 			}
 		}
-		bomb = "  \x1b[41;1m " + label + " " + reset
+		clock += "  \x1b[41;1m " + label + " " + reset
 	}
-	return fmt.Sprintf(" %s%s  %s%s%s %d%s : %s%s%d %s%s  %s",
-		clock, bomb,
+	return clock
+}
+
+// header is the score line over the scoreboard; the clock lives above the map.
+func header(st *gotv.State) string {
+	return fmt.Sprintf(" %s%s%s %d%s : %s%s%d %s%s  %s",
 		term.Fg(term.CT), boldOn, st.CT.Name, st.CT.Score, reset,
 		term.Fg(term.T), boldOn, st.T.Score, st.T.Name, reset,
-		dim(fmt.Sprintf("R%d %s", st.Round, st.Map)))
+		dim(st.Map))
 }
 
 var frame = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("8"))
@@ -447,11 +450,16 @@ func (m *matchModel) focusName() string {
 // hint when off. Clicking it toggles too.
 func (m *matchModel) directorSwitch(width int) string {
 	var sw, note string
+	pre := ""
+	if m.st != nil {
+		pre = " " + roundStatus(m.st) + "   "
+		m.switchX += lipgloss.Width(pre)
+	}
 	if m.focus != "" {
 		sw = switchFocus.Render(" ◎ FOLLOWING " + m.focusName() + " ")
 		note = dim(" click them again or elsewhere to stop")
 		m.switchW = 0 // following, not the director: the bar isn't a switch now
-		return ansi.Truncate(sw+note, width, "")
+		return ansi.Truncate(pre+sw+note, width, "")
 	}
 	if m.directing {
 		sw = switchOn.Render(" ● DIRECTOR ON ")
@@ -464,5 +472,5 @@ func (m *matchModel) directorSwitch(width int) string {
 		note = dim(" press d or click")
 	}
 	m.switchW = lipgloss.Width(sw)
-	return ansi.Truncate(sw+note, width, "")
+	return ansi.Truncate(pre+sw+note, width, "")
 }

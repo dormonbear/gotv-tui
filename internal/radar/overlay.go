@@ -73,10 +73,23 @@ func Sprites(r *Raster, cellW, cellH int, st *gotv.State, o Opts) []Use {
 		rad, a, flash := b.ring()
 		step := int(b.Age / BoomShow * 16) // 16 frames of animation, each drawn once
 		px, w := math.Round(rad*perUnit), math.Max(2, rad*perUnit*0.18)
-		add(fmt.Sprintf("boom:%d:%.0f", step, px), 3, x, y, func() Sprite { return boomSprite(px, w, a, flash) })
+		add(fmt.Sprintf("boom:%d:%.0f", step, px), 3, x, y, func() Sprite { return boomSprite(px, w, a, flash, boomC) })
 	}
 	for i, kl := range o.Kills {
-		if o.Now.Sub(kl.At) > killShow || kl.From == nil || !here(kl.To) {
+		if o.Now.Sub(kl.At) > killShow || !here(kl.To) {
+			continue
+		}
+		age := o.Now.Sub(kl.At).Seconds()
+		vx, vy := at(kl.To)
+		if rad, a, c, ok := kl.fx(age); ok {
+			step := int(age / killFx * 8) // 8 frames, each drawn once
+			px := math.Round(rad * perUnit)
+			add(fmt.Sprintf("kfx:%v:%d:%.0f", kl.Headshot, step, px), 3, vx, vy, func() Sprite { return boomSprite(px, math.Max(2, px*0.3), a, false, c) })
+		}
+		if kl.Headshot && age < hsShow {
+			add("hs", 6, vx+m.dot*1.6, vy, func() Sprite { return textSprite("HS", hsC, m.text) })
+		}
+		if kl.From == nil {
 			continue
 		}
 		ax, ay := at(*kl.From)
@@ -138,7 +151,7 @@ func metrics(cellH int) sizes {
 }
 
 // boomSprite is the shock-wave ring (with the white flash inside at first).
-func boomSprite(r, w, a float64, flash bool) Sprite {
+func boomSprite(r, w, a float64, flash bool, col term.RGB) Sprite {
 	n := int(math.Ceil(r+w))*2 + 2
 	c := newCanvas(n, n)
 	h := float64(n) / 2
@@ -148,7 +161,7 @@ func boomSprite(r, w, a float64, flash bool) Sprite {
 	for y := 0; y < n; y++ {
 		for x := 0; x < n; x++ {
 			d := math.Hypot(float64(x)+0.5-h, float64(y)+0.5-h)
-			c.blend(x, y, boomC, a*math.Max(0, 1-math.Abs(d-r)/w))
+			c.blend(x, y, col, a*math.Max(0, 1-math.Abs(d-r)/w))
 		}
 	}
 	return Sprite{c.img, n / 2, n / 2}
