@@ -258,6 +258,9 @@ func (m *matchModel) follow() tea.Cmd {
 		m.moving = false
 		return nil
 	}
+	if m.assets == nil { // the map isn't loaded yet: keep the loop waiting for it
+		return animTick()
+	}
 	tx, ty, tz := m.shotTarget()
 	v := m.camera()
 	far := math.Abs(tx-m.camX) > holdMove*v.W || math.Abs(ty-m.camY) > holdMove*v.H || math.Abs(math.Log(tz/m.zoom)) > holdZoom
