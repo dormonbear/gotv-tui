@@ -113,6 +113,7 @@ type Opts struct {
 	ImageUnder bool   // the terminal shows the radar image under blank cells
 	Names      bool   // label players by name where it fits (zoomed in)
 	Focus      string // followed player (lowercase): drawn highlighted
+	Boom       *Boom  // a C4 explosion in progress
 }
 
 // Draw overlays the markers on this level over the static base, as ANSI rows.
@@ -185,6 +186,38 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 				tint(u.Pos, smokeR, smokeC, 0.75)
 			case gotv.UFire:
 				tint(u.Pos, fireR, fireC, 0.85)
+			}
+		}
+	}
+	if b := o.Boom; b != nil && here(b.Pos) && b.Age < BoomShow {
+		cx, cy := toCell(b.Pos)
+		rad, a, flash := b.ring()
+		rc := math.Max(1, rad*unit)
+		w := math.Max(1, rc*0.18) // ring thickness, cells
+		for yy := int(float64(cy) - (rc+w)/r.Aspect); float64(yy) <= float64(cy)+(rc+w)/r.Aspect; yy++ {
+			for xx := int(float64(cx) - rc - w); float64(xx) <= float64(cx)+rc+w; xx++ {
+				if xx < 0 || yy < 0 || xx >= CW || yy >= CH {
+					continue
+				}
+				d := math.Hypot(float64(xx-cx), float64(yy-cy)*r.Aspect)
+				k := a * math.Max(0, 1-math.Abs(d-rc)/w) // brightest on the wave front
+				c := boomC
+				if flash && d < rc {
+					c, k = term.White, a
+				}
+				if k <= 0 {
+					continue
+				}
+				i := yy*CW + xx
+				tinted[i] = true
+				for _, px := range []*[]*term.RGB{&top, &bot} {
+					under := term.Black
+					if (*px)[i] != nil {
+						under = *(*px)[i]
+					}
+					m := term.Mix(under, c, k)
+					(*px)[i] = &m
+				}
 			}
 		}
 	}
@@ -350,4 +383,25 @@ func playerLabels(players []gotv.Player, o Opts, here func(gotv.Vec) bool, toCel
 		out[m.name] = label
 	}
 	return out
+}
+
+// Boom is a C4 explosion at Pos, Age seconds ago.
+type Boom struct {
+	Pos gotv.Vec
+	Age float64
+}
+
+const (
+	BoomShow = 1.5   // seconds the explosion is shown
+	boomMax  = 1100. // world units the shock wave reaches
+)
+
+var boomC = term.RGB{255, 120, 30}
+
+// ring is the shock wave now: radius (world units), opacity, and whether the
+// first white flash is still on.
+func (b *Boom) ring() (float64, float64, bool) {
+	p := math.Min(1, b.Age/BoomShow)
+	out := 1 - (1-p)*(1-p) // fast, then slowing down
+	return 120 + (boomMax-120)*out, 1 - p, b.Age < 0.2
 }

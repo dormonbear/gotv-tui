@@ -68,6 +68,13 @@ func Sprites(r *Raster, cellW, cellH int, st *gotv.State, o Opts) []Use {
 			add(fmt.Sprintf("disc:%v:%.0f", u.Kind, px), 1, x, y, func() Sprite { return discSprite(px, col, a) })
 		}
 	}
+	if b := o.Boom; b != nil && here(b.Pos) && b.Age < BoomShow {
+		x, y := at(b.Pos)
+		rad, a, flash := b.ring()
+		step := int(b.Age / BoomShow * 16) // 16 frames of animation, each drawn once
+		px, w := math.Round(rad*perUnit), math.Max(2, rad*perUnit*0.18)
+		add(fmt.Sprintf("boom:%d:%.0f", step, px), 3, x, y, func() Sprite { return boomSprite(px, w, a, flash) })
+	}
 	for i, kl := range o.Kills {
 		if o.Now.Sub(kl.At) > killShow || kl.From == nil || !here(kl.To) {
 			continue
@@ -128,6 +135,23 @@ type sizes struct {
 
 func metrics(cellH int) sizes {
 	return sizes{dot: math.Max(4, float64(cellH)*0.3), stroke: math.Max(1.5, float64(cellH)/14), text: max(1, int(math.Round(float64(cellH)/16)))}
+}
+
+// boomSprite is the shock-wave ring (with the white flash inside at first).
+func boomSprite(r, w, a float64, flash bool) Sprite {
+	n := int(math.Ceil(r+w))*2 + 2
+	c := newCanvas(n, n)
+	h := float64(n) / 2
+	if flash {
+		c.disc(h, h, r, term.White, a*0.8)
+	}
+	for y := 0; y < n; y++ {
+		for x := 0; x < n; x++ {
+			d := math.Hypot(float64(x)+0.5-h, float64(y)+0.5-h)
+			c.blend(x, y, boomC, a*math.Max(0, 1-math.Abs(d-r)/w))
+		}
+	}
+	return Sprite{c.img, n / 2, n / 2}
 }
 
 func discSprite(r float64, col term.RGB, a float64) Sprite {

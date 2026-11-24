@@ -81,6 +81,7 @@ type matchModel struct {
 	out      io.Writer
 	uploaded string // map whose radar images the terminal holds
 	sprites  spriteLayer
+	fx       fx
 	camX     float64 // camera centre, 1024 radar space
 	camY     float64
 	w, h     int
@@ -126,6 +127,7 @@ func (m *matchModel) close() { m.cancel() }
 
 // applyEvent appends to the log and tracks this round's kills for the map.
 func (m *matchModel) applyEvent(e gotv.Event, now time.Time) {
+	m.fx.onEvent(e, m.st, now)
 	m.log = append([]gotv.Event{e}, m.log...)
 	if len(m.log) > logLimit {
 		m.log = m.log[:logLimit]
@@ -143,6 +145,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	case stateMsg:
 		s := gotv.State(msg)
 		m.st = &s
+		m.fx.onState(m.st, time.Now())
 		m.direct()
 		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" {
 			m.loading = s.Map
@@ -286,6 +289,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			ImageUnder: m.images(),
 			Names:      m.zoom >= namesFrom,
 			Focus:      m.focus,
+			Boom:       m.fx.boom(time.Now()),
 		}
 		var lines []string
 		if m.images() { // map and markers are terminal images: the text is blank
@@ -355,7 +359,7 @@ func (m *matchModel) view() string {
 	toggle := m.directorSwitch(mapW)
 	m.switchX = leftW + 1 // clicks on row 0 from here over the switch toggle it
 	mapH := body - 1      // row 0 is the director switch
-	mapStr := m.mapView(mapW, mapH, nums)
+	mapStr := m.fx.overlay(m.mapView(mapW, mapH, nums), time.Now())
 	mapBlock := toggle + "\n" + lipgloss.Place(mapW, mapH, lipgloss.Left, lipgloss.Top, mapStr)
 	offX, offY := leftW+1, 1 // the map sits right next to the scoreboard, under the switch
 	for _, lv := range m.levels {
