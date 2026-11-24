@@ -11,6 +11,20 @@ relay: scoreboard, kill feed and a live radar with every player's position.
   [2mlml/cs2-radar-images](https://github.com/2mlml/cs2-radar-images) and cached in
   `~/.cache/gotv-tui/radar`. Two-level maps (Nuke, Train, Vertigo) show both levels.
 
+## Map rendering
+
+The radar is drawn as a real image where the terminal supports it, else as text:
+
+| Terminal | Map |
+|---|---|
+| Ghostty, kitty | kitty graphics: radar uploaded once, markers as sprites, pixel-smooth zoom/drag |
+| iTerm2, WezTerm | iTerm2 inline images: whole frame (map + markers), up to 10 fps |
+| Windows Terminal, foot, Konsole | Sixel: whole frame, 255 colours, up to 10 fps |
+| VS Code | opt in with `GOTV_TUI_GRAPHICS=iterm` (needs `terminal.integrated.enableImages`) |
+| others (Terminal.app, Alacritty, ...) | braille outlines; more detail lines appear as you zoom in |
+
+`GOTV_TUI_GRAPHICS=kitty|iterm|sixel|off` overrides the detection.
+
 ## Install
 
 macOS / Linux:

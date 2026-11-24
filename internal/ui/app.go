@@ -2,8 +2,6 @@
 package ui
 
 import (
-	"io"
-
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
@@ -14,12 +12,15 @@ type App struct {
 	list  *listModel
 	match *matchModel
 	w, h  int
-	out   io.Writer // kitty image uploads; nil draws maps in half blocks
+	out   *term.LockedFile // image output; nil draws maps as text
+	gfx   term.Graphics
 }
 
-// New opens url directly when given, else starts on the source list. With out set,
-// maps are uploaded there as kitty images (it must be the program's output writer).
-func New(url string, out io.Writer) *App { return &App{w: 100, h: 40, match: pending(url), out: out} }
+// New opens url directly when given, else starts on the source list. With out set
+// (it must be the program's output), maps are shown as images with protocol gfx.
+func New(url string, out *term.LockedFile, gfx term.Graphics) *App {
+	return &App{w: 100, h: 40, match: pending(url), out: out, gfx: gfx}
+}
 
 func pending(url string) *matchModel {
 	if url == "" {
@@ -29,12 +30,12 @@ func pending(url string) *matchModel {
 }
 
 func (a *App) Init() tea.Cmd {
-	if a.out != nil {
-		term.PixelMouse(a.out, true) // matchModel.pointer reads pixels when images are on
+	if a.out != nil && a.gfx == term.Kitty {
+		term.PixelMouse(a.out, true) // matchModel.pointer reads pixels with kitty graphics
 	}
 	if a.match != nil {
 		m, cmd := newMatch(a.match.url, a.w, a.h)
-		m.out = a.out
+		m.out, m.gfx = a.out, a.gfx
 		a.match = m
 		return cmd
 	}
@@ -94,7 +95,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		url, cmd := a.list.update(msg)
 		if url != "" {
 			m, start := newMatch(url, a.w, a.h)
-			m.out = a.out
+			m.out, m.gfx = a.out, a.gfx
 			a.match = m
 			return a, tea.Batch(cmd, start)
 		}

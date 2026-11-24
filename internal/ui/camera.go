@@ -100,7 +100,7 @@ func (m *matchModel) radarAt(x, y float64) (float64, float64, bool) {
 // pointer is the mouse position in cells: exact when the terminal reports pixels
 // (SGR-pixel mode, on with images), else the middle of the reported cell.
 func (m *matchModel) pointer(e tea.MouseMsg) (float64, float64) {
-	if m.out != nil {
+	if m.gfx == term.Kitty && m.out != nil { // pixel mouse reports are on with kitty graphics
 		cw, ch := term.CellPixels()
 		return float64(e.X) / float64(cw), float64(e.Y) / float64(ch)
 	}

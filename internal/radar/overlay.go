@@ -325,3 +325,19 @@ func (c *canvas) text(x, y int, s string, col term.RGB, k int) {
 		}
 	}
 }
+
+// Stamp composites sprite s onto dst with its anchor at (x, y), for terminals that
+// get the whole frame as one image.
+func Stamp(dst *image.NRGBA, s Sprite, x, y float64) {
+	c := canvas{dst}
+	ox, oy := int(math.Round(x))-s.AX, int(math.Round(y))-s.AY
+	b := s.Img.Rect
+	for sy := 0; sy < b.Dy(); sy++ {
+		for sx := 0; sx < b.Dx(); sx++ {
+			p := s.Img.Pix[s.Img.PixOffset(sx, sy):]
+			if p[3] > 0 {
+				c.blend(ox+sx, oy+sy, term.RGB{p[0], p[1], p[2]}, float64(p[3])/255)
+			}
+		}
+	}
+}

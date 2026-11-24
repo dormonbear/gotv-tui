@@ -163,6 +163,13 @@ func (b Box) Center() (float64, float64) { return b.X + b.W/2, b.Y + b.H/2 }
 // Empty areas (and the dark backdrop of lower-level radars) are transparent; the map
 // is dimmed by alpha so markers drawn over it stand out.
 func ImagePNG(img *image.NRGBA, view Box, w, h int, alpha float64) ([]byte, error) {
+	var b bytes.Buffer
+	err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&b, ViewImage(img, view, w, h, alpha))
+	return b.Bytes(), err
+}
+
+// ViewImage is view of img at w x h pixels, empty areas transparent, dimmed by alpha.
+func ViewImage(img *image.NRGBA, view Box, w, h int, alpha float64) *image.NRGBA {
 	px := Resample(img, view, w, h)
 	out := image.NewNRGBA(image.Rect(0, 0, w, h))
 	for i := 0; i < w*h; i++ {
@@ -172,9 +179,7 @@ func ImagePNG(img *image.NRGBA, view Box, w, h int, alpha float64) ([]byte, erro
 		o := out.Pix[i*4:]
 		o[0], o[1], o[2], o[3] = byte(float64(px[i*4])*alpha), byte(float64(px[i*4+1])*alpha), byte(float64(px[i*4+2])*alpha), px[i*4+3]
 	}
-	var b bytes.Buffer
-	err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&b, out)
-	return b.Bytes(), err
+	return out
 }
 
 // Fill grows b to the shape ratio (width/height) of the area it is shown in, keeping

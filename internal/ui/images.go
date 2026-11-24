@@ -15,14 +15,14 @@ const (
 
 // images reports whether the radar is drawn as a terminal image under the text.
 func (m *matchModel) images() bool {
-	return m.out != nil && m.assets != nil && m.uploaded == m.assets.Map
+	return m.gfx == term.Kitty && m.out != nil && m.assets != nil && m.uploaded == m.assets.Map
 }
 
 // placeImages shows each level's current view. The images are uploaded once per map;
 // every frame then only sends a placement (position + source rectangle), so zoom
 // and pan follow the camera exactly, and a screen clear is repaired next frame.
 func (m *matchModel) placeImages() {
-	if m.out == nil || m.assets == nil {
+	if m.gfx != term.Kitty || m.out == nil || m.assets == nil {
 		return
 	}
 	if m.uploaded != m.assets.Map {
@@ -58,6 +58,10 @@ func (m *matchModel) placeImages() {
 // hideImages takes the radar images off screen (keeping them uploaded).
 func (m *matchModel) hideImages() {
 	if m.out == nil {
+		return
+	}
+	if m.gfx != term.Kitty {
+		m.out.SetOverlay(nil) // whole frames: stop redrawing them; the list's text covers them
 		return
 	}
 	for i := 0; i < 2; i++ {
