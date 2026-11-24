@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/dormonbear/gotv-tui/internal/director"
 	"github.com/dormonbear/gotv-tui/internal/radar"
 )
 
@@ -96,6 +97,10 @@ func (m *matchModel) cameraKey(k string) tea.Cmd {
 	if m.assets == nil {
 		return nil
 	}
+	if k == "d" {
+		return m.toggleDirector()
+	}
+	m.directing = false // any manual move takes the camera back
 	v := m.camera()
 	cx, cy := v.Center()
 	switch k {
@@ -127,6 +132,9 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 	if m.assets == nil {
 		return nil
 	}
+	if e.Action == tea.MouseActionPress {
+		m.directing = false // any manual move takes the camera back
+	}
 	switch {
 	case e.Button == tea.MouseButtonLeft && e.Action == tea.MouseActionPress:
 		if _, _, ok := m.radarAt(e.X, e.Y); ok {
@@ -157,4 +165,66 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 		ax, ay = m.camera().Center()
 	}
 	return m.zoomAround(f, ax, ay)
+}
+
+const (
+	followEase = 0.12 // share of the way to the shot covered per frame (~0.6 s to settle)
+	holdMove   = 0.12 // dead zone: ignore shot moves under this share of the view...
+	holdZoom   = 0.15 // ...and zoom changes under this (log scale)
+)
+
+func (m *matchModel) toggleDirector() tea.Cmd {
+	m.directing = !m.directing
+	if !m.directing {
+		return nil
+	}
+	if m.dir == nil {
+		m.dir = director.New()
+	}
+	m.direct()
+	m.moving = true // keep the frame loop going while directing
+	return animTick()
+}
+
+// direct asks the director for a shot on the latest state.
+func (m *matchModel) direct() {
+	if !m.directing || m.assets == nil {
+		return
+	}
+	m.shot = m.dir.Update(time.Now(), m.st, m.soon, m.assets.Overview.LowerBelow)
+}
+
+// shotTarget is the camera centre (radar space) and zoom that frame the shot.
+func (m *matchModel) shotTarget() (x, y, z float64) {
+	s, ov := m.shot, m.assets.Overview
+	if s == nil {
+		x, y = m.box.Center()
+		return x, y, 1
+	}
+	side := 2 * s.Radius / ov.Scale // radar px the shot needs both ways
+	z = min(radar.MaxZoom, max(1, min(m.box.W, m.box.H)/side))
+	return (s.X - ov.PosX) / ov.Scale, (ov.PosY - s.Y) / ov.Scale, z
+}
+
+// follow eases the camera towards the shot, holding still for small moves.
+func (m *matchModel) follow() tea.Cmd {
+	if !m.directing {
+		m.moving = false
+		return nil
+	}
+	tx, ty, tz := m.shotTarget()
+	v := m.camera()
+	far := math.Abs(tx-m.camX) > holdMove*v.W || math.Abs(ty-m.camY) > holdMove*v.H || math.Abs(math.Log(tz/m.zoom)) > holdZoom
+	if far || m.settling {
+		m.settling = true
+		m.camX += (tx - m.camX) * followEase
+		m.camY += (ty - m.camY) * followEase
+		m.zoom *= math.Pow(tz/m.zoom, followEase)
+		m.zoomTo = m.zoom
+		// once moving, go all the way: stopping at the dead-zone edge looks unfinished
+		if math.Abs(tx-m.camX) < 0.01*v.W && math.Abs(ty-m.camY) < 0.01*v.H && math.Abs(math.Log(tz/m.zoom)) < 0.01 {
+			m.settling = false
+		}
+	}
+	return animTick()
 }

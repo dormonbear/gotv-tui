@@ -72,3 +72,31 @@ func (p *Playback[S, E]) Step(nowMs float64) (frame *S, events []E) {
 	p.events = p.events[j:]
 	return frame, events
 }
+
+// Soon is a queued event and how many seconds until it plays.
+type Soon[E any] struct {
+	In float64
+	E  E
+}
+
+// Ahead peeks at what is queued but not yet played: events due within horizon
+// seconds, and the latest frame inside that horizon. Call it after Step.
+func (p *Playback[S, E]) Ahead(horizon float64) (events []Soon[E], future *S) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	until := p.play + horizon*p.tps
+	for _, e := range p.events {
+		if float64(e.tick) > until {
+			break
+		}
+		events = append(events, Soon[E]{(float64(e.tick) - p.play) / p.tps, e.v})
+	}
+	for i := range p.frames {
+		if float64(p.frames[i].tick) > until {
+			break
+		}
+		f := p.frames[i].v
+		future = &f
+	}
+	return events, future
+}
