@@ -2,10 +2,7 @@ package ui
 
 import (
 	"regexp"
-	"strings"
 	"testing"
-
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 )
@@ -14,16 +11,18 @@ var esc = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func plain(s string) string { return esc.ReplaceAllString(s, "") }
 
-func TestHeaderKeepsCountdownsWhenCut(t *testing.T) {
+func TestRoundStatusAboveMap(t *testing.T) {
 	st := &gotv.State{Map: "de_ancient", Round: 22, SecondsLeft: 78,
 		CT: gotv.Team{Name: "Lynn Vision Gaming", Score: 9}, T: gotv.Team{Name: "Ninjas in Pyjamas", Score: 12},
 		Bomb: &gotv.Bomb{State: gotv.BombDefusing, SecondsLeft: 31.2, DefuseLeft: 4.25}}
-	h := plain(ansi.Truncate(header(st), 40, ""))
-	if !strings.HasPrefix(h, " 1:18   BOMB 32s · DEFUSING 4.2s   Lynn") {
+	if h := plain(roundStatus(st)); h != "R22 1:18   BOMB 32s · DEFUSING 4.2s " {
 		t.Fatalf("%q", h)
 	}
-	st.Over, st.Freeze = true, true
-	if h := plain(header(st)); !strings.HasPrefix(h, " match over  Lynn") {
+	if h := plain(header(st)); h != " Lynn Vision Gaming 9 : 12 Ninjas in Pyjamas  de_ancient" {
+		t.Fatalf("%q", h)
+	}
+	st.Over = true
+	if h := plain(roundStatus(st)); h != "match over" {
 		t.Fatalf("%q", h)
 	}
 }

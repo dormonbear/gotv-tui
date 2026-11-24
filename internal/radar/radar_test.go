@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -229,5 +230,36 @@ func TestDetailLinesAppearWhenZoomedIn(t *testing.T) {
 	}
 	if out := BuildBase(&Raster{W: 2, H: 4, Pixels: make([]byte, 8*16*4)}, 3); out.dots[0] != 0 {
 		t.Fatal("empty radar has no lines")
+	}
+}
+
+func TestKillLineIsThinAndHeadshotMarked(t *testing.T) {
+	const W, H = 60, 16 // 30x4 cells; 1 world unit = 1 braille dot here
+	r := &Raster{W: W, H: H, Pixels: make([]byte, W*SS*H*SS*4), Aspect: 2, ov: Overview{Scale: 1}, k: 1, ky: 1}
+	now := time.Now()
+	k := KillMark{From: &gotv.Vec{X: 0, Y: 0}, To: gotv.Vec{X: 44, Y: -14}, Headshot: true, At: now.Add(-time.Second)}
+	rows := Draw(r, BuildBase(r, 1), &gotv.State{}, Opts{Kills: []KillMark{k}, Now: now})
+	cols := map[int]int{} // cells per column holding line dots
+	for y, row := range rows {
+		for x, c := range []rune(string(strip(row))) {
+			if c > 0x2800 && c <= 0x28ff {
+				cols[x]++
+				if y > 3 {
+					t.Fatal("line outside its rows")
+				}
+			}
+		}
+	}
+	for x := 1; x <= 20; x++ {
+		if cols[x] == 0 || cols[x] > 2 {
+			t.Fatalf("column %d has %d line cells (gap or staircase): %v", x, cols[x], cols)
+		}
+	}
+	if !strings.Contains(string(strip(rows[3])), "✸HS") {
+		t.Fatalf("no headshot mark: %q", string(strip(rows[3])))
+	}
+	k.At = now.Add(-2 * time.Second) // headshot mark gone after hsShow
+	if rows := Draw(r, BuildBase(r, 1), &gotv.State{}, Opts{Kills: []KillMark{k}, Now: now}); strings.Contains(string(strip(rows[3])), "HS") {
+		t.Fatal("headshot mark still shown")
 	}
 }
