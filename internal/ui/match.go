@@ -72,6 +72,8 @@ type matchModel struct {
 	shot      *director.Shot
 	soon      []playback.Soon[gotv.Event] // events queued ahead of the screen
 	settling  bool                        // camera still moving to the last shot
+	switchX   int                         // screen column where the director switch starts
+	switchW   int                         // its width; it sits on screen row 0
 	// kitty graphics: images go to out (nil: draw the map in half blocks)
 	out      io.Writer
 	uploaded string // map whose radar images the terminal holds
@@ -330,12 +332,15 @@ func (m *matchModel) view() string {
 		left[i] = ansi.Truncate(left[i], leftW, "")
 	}
 	leftBlock := lipgloss.NewStyle().Width(leftW).Height(body).MaxHeight(body).Render(strings.Join(left, "\n"))
-	mapStr := m.mapView(mapW, body, nums)
-	mapBlock := lipgloss.Place(mapW, body, lipgloss.Center, lipgloss.Center, mapStr)
+	toggle := m.directorSwitch(mapW)
+	m.switchX = leftW + 1 // clicks on row 0 from here over the switch toggle it
+	mapH := body - 1      // row 0 is the director switch
+	mapStr := m.mapView(mapW, mapH, nums)
+	mapBlock := toggle + "\n" + lipgloss.Place(mapW, mapH, lipgloss.Center, lipgloss.Center, mapStr)
 	// where Place put the map: lipgloss centres with gap - round(gap/2) before it
 	before := func(gap int) int { return gap - int(math.Round(float64(gap)*0.5)) }
 	offX := leftW + 1 + before(mapW-lipgloss.Width(mapStr))
-	offY := before(body - lipgloss.Height(mapStr))
+	offY := 1 + before(mapH-lipgloss.Height(mapStr))
 	for _, lv := range m.levels {
 		lv.sx, lv.sy = offX+lv.ox, offY+lv.oy
 	}
@@ -344,13 +349,29 @@ func (m *matchModel) view() string {
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	dir := " d director ·"
-	if m.directing {
-		dir = " director: whole map ·"
-		if m.shot != nil {
-			dir = " director: " + m.shot.Reason + " ·"
-		}
-	}
-	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources ·%s wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", dir, zoom, m.status), m.w, ""))
+	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, " ", mapBlock) + "\n" + footer
+}
+
+var (
+	switchOn  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("2"))
+	switchOff = lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Background(lipgloss.Color("8"))
+)
+
+// directorSwitch is the director toggle above the map: what it shows when on, a
+// hint when off. Clicking it toggles too.
+func (m *matchModel) directorSwitch(width int) string {
+	var sw, note string
+	if m.directing {
+		sw = switchOn.Render(" ● DIRECTOR ON ")
+		note = " whole map"
+		if m.shot != nil {
+			note = " " + m.shot.Reason
+		}
+	} else {
+		sw = switchOff.Render(" ○ DIRECTOR OFF ")
+		note = dim(" press d or click")
+	}
+	m.switchW = lipgloss.Width(sw)
+	return ansi.Truncate(sw+note, width, "")
 }

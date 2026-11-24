@@ -153,3 +153,19 @@ func TestDirectorCameraFollowsTheShot(t *testing.T) {
 		t.Fatal("manual input should end directing")
 	}
 }
+
+func TestDirectorSwitchClickAndLabel(t *testing.T) {
+	m := testMatch(false)
+	if !strings.Contains(plain(m.view()), "DIRECTOR OFF") {
+		t.Fatal("switch should show OFF")
+	}
+	click := tea.MouseMsg{X: m.switchX + 2, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	m.mouse(click)
+	if !m.directing || !strings.Contains(plain(m.view()), "DIRECTOR ON") {
+		t.Fatal("click should turn the director on")
+	}
+	m.mouse(click)
+	if m.directing {
+		t.Fatal("second click should turn it off")
+	}
+}

@@ -146,6 +146,11 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 	if m.assets == nil {
 		return nil
 	}
+	if e.Action == tea.MouseActionPress && e.Button == tea.MouseButtonLeft {
+		if x, y := m.pointer(e); int(y) == 0 && int(x) >= m.switchX && int(x) < m.switchX+m.switchW {
+			return m.toggleDirector()
+		}
+	}
 	if e.Action == tea.MouseActionPress {
 		m.directing = false // any manual move takes the camera back
 	}
