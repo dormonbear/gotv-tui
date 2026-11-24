@@ -110,8 +110,9 @@ type Opts struct {
 	Lower      bool // which level this map shows
 	LowerBelow *float64
 	Sites      []Site
-	ImageUnder bool // the terminal shows the radar image under blank cells
-	Names      bool // label players by name where it fits (zoomed in)
+	ImageUnder bool   // the terminal shows the radar image under blank cells
+	Names      bool   // label players by name where it fits (zoomed in)
+	Focus      string // followed player (lowercase): drawn highlighted
 }
 
 // Draw overlays the markers on this level over the static base, as ANSI rows.
@@ -234,6 +235,9 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 				fg = red
 			}
 			c := teamColor(pl.Side)
+			if strings.ToLower(pl.Name) == o.Focus {
+				c = term.White // the followed player stands out
+			}
 			cx, cy := toCell(*pl.Pos)
 			for i, r := range []rune(labels[pl.Name]) {
 				putCell(cx+i, cy, glyph{ch: string(r), fg: fg, bg: &c, bold: true}, true)

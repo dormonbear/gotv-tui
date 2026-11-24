@@ -27,7 +27,7 @@ func TestSpritesSitWhereTheMapPutsThem(t *testing.T) {
 	px, py := r.ToPx(st.Players[0].Pos.X, st.Players[0].Pos.Y)
 	found := false
 	for _, u := range uses {
-		if u.Key == "player:CT:1:false" {
+		if u.Key == "player:CT:1:false:false" {
 			found = true
 			if u.X != px*13/2 || u.Y != py*29/4 {
 				t.Fatalf("player at (%.1f,%.1f), want (%.1f,%.1f)", u.X, u.Y, px*13/2, py*29/4)

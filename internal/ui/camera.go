@@ -114,7 +114,17 @@ func (m *matchModel) cameraKey(k string) tea.Cmd {
 	if k == "d" {
 		return m.toggleDirector()
 	}
-	m.directing = false // any manual move takes the camera back
+	if m.focus != "" {
+		switch k {
+		case "+", "=":
+			m.zoomTo = min(radar.MaxZoom, m.zoomTo*keyZoom)
+			return nil
+		case "-", "_":
+			m.zoomTo = max(1, m.zoomTo/keyZoom)
+			return nil
+		}
+	}
+	m.directing, m.focus = false, "" // any manual move takes the camera back
 	v := m.camera()
 	cx, cy := v.Center()
 	switch k {
@@ -147,12 +157,27 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	if e.Action == tea.MouseActionPress && e.Button == tea.MouseButtonLeft {
-		if x, y := m.pointer(e); int(y) == 0 && int(x) >= m.switchX && int(x) < m.switchX+m.switchW {
+		x, y := m.pointer(e)
+		if int(y) == 0 && int(x) >= m.switchX && int(x) < m.switchX+m.switchW {
 			return m.toggleDirector()
 		}
+		if name := m.rowPlayer[int(y)]; name != "" && int(x) < m.switchX { // scoreboard row
+			return m.focusOn(name)
+		}
+		if name := m.playerAt(x, y); name != "" {
+			return m.focusOn(name)
+		}
+	}
+	if m.focus != "" && (e.Button == tea.MouseButtonWheelUp || e.Button == tea.MouseButtonWheelDown) {
+		if e.Button == tea.MouseButtonWheelUp { // zoom around the followed player
+			m.zoomTo = min(radar.MaxZoom, m.zoomTo*wheelZoom)
+		} else {
+			m.zoomTo = max(1, m.zoomTo/wheelZoom)
+		}
+		return nil
 	}
 	if e.Action == tea.MouseActionPress {
-		m.directing = false // any manual move takes the camera back
+		m.directing, m.focus = false, "" // a click elsewhere, a drag: manual camera
 	}
 	switch {
 	case e.Button == tea.MouseButtonLeft && e.Action == tea.MouseActionPress:
@@ -195,7 +220,7 @@ const (
 )
 
 func (m *matchModel) toggleDirector() tea.Cmd {
-	m.directing = !m.directing
+	m.directing, m.focus = !m.directing, ""
 	if !m.directing {
 		return nil
 	}

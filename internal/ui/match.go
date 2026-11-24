@@ -74,6 +74,8 @@ type matchModel struct {
 	settling  bool                        // camera still moving to the last shot
 	switchX   int                         // screen column where the director switch starts
 	switchW   int                         // its width; it sits on screen row 0
+	focus     string                      // followed player (lowercase), "" for none
+	rowPlayer map[int]string              // scoreboard screen row -> player (lowercase)
 	// kitty graphics: images go to out (nil: draw the map in half blocks)
 	out      io.Writer
 	uploaded string // map whose radar images the terminal holds
@@ -171,6 +173,9 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		m.soon = msg
 		return m.wait()
 	case animMsg:
+		if m.focus != "" {
+			return m.followPlayer()
+		}
 		if m.directing {
 			return m.follow()
 		}
@@ -275,6 +280,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			LowerBelow: a.Overview.LowerBelow, Sites: radar.SitesOn(a.Map, lv.lower, a.Overview.Sites),
 			ImageUnder: m.images(),
 			Names:      m.zoom >= namesFrom,
+			Focus:      m.focus,
 		}
 		var lines []string
 		if m.images() { // map and markers are terminal images: the text is blank
@@ -318,8 +324,17 @@ func (m *matchModel) view() string {
 	} else {
 		nums = PlayerNumbers(m.st.Players)
 		left = append(left, header(m.st))
-		left = append(left, TeamTable(gotv.CT, m.st.CT, m.st.Players, nums)...)
-		left = append(left, TeamTable(gotv.T, m.st.T, m.st.Players, nums)...)
+		m.rowPlayer = map[int]string{}
+		for _, side := range []struct {
+			s gotv.Side
+			t gotv.Team
+		}{{gotv.CT, m.st.CT}, {gotv.T, m.st.T}} {
+			top := len(left) + 1 // below the team's title row
+			for i, p := range teamRows(side.s, m.st.Players, nums) {
+				m.rowPlayer[top+i] = strings.ToLower(p.Name)
+			}
+			left = append(left, TeamTable(side.s, side.t, m.st.Players, nums)...)
+		}
 	}
 	left = append(left, "", bold("Game log"))
 	if len(m.log) == 0 {
@@ -354,14 +369,33 @@ func (m *matchModel) view() string {
 }
 
 var (
-	switchOn  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("2"))
-	switchOff = lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Background(lipgloss.Color("8"))
+	switchOn    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("2"))
+	switchOff   = lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Background(lipgloss.Color("8"))
+	switchFocus = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
 )
+
+// focusName is the followed player's name as shown in game.
+func (m *matchModel) focusName() string {
+	if m.st != nil {
+		for _, p := range m.st.Players {
+			if strings.ToLower(p.Name) == m.focus {
+				return p.Name
+			}
+		}
+	}
+	return m.focus
+}
 
 // directorSwitch is the director toggle above the map: what it shows when on, a
 // hint when off. Clicking it toggles too.
 func (m *matchModel) directorSwitch(width int) string {
 	var sw, note string
+	if m.focus != "" {
+		sw = switchFocus.Render(" ◎ FOLLOWING " + m.focusName() + " ")
+		note = dim(" click them again or elsewhere to stop")
+		m.switchW = 0 // following, not the director: the bar isn't a switch now
+		return ansi.Truncate(sw+note, width, "")
+	}
 	if m.directing {
 		sw = switchOn.Render(" ● DIRECTOR ON ")
 		note = " whole map"

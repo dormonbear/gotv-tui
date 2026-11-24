@@ -169,3 +169,49 @@ func TestDirectorSwitchClickAndLabel(t *testing.T) {
 		t.Fatal("second click should turn it off")
 	}
 }
+
+func TestClickAPlayerToFollowThem(t *testing.T) {
+	m := testMatch(false)
+	m.st = &gotv.State{Players: []gotv.Player{
+		{Name: "s1n", Side: gotv.T, Alive: true, Pos: &gotv.Vec{X: 600, Y: -300}},
+		{Name: "dgt", Side: gotv.CT, Alive: true, Pos: &gotv.Vec{X: 300, Y: -700}},
+	}}
+	m.view()
+	click := func(x, y float64) {
+		m.mouse(tea.MouseMsg{X: int(x), Y: int(y), Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		m.mouse(tea.MouseMsg{X: int(x), Y: int(y), Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	}
+	lv := m.levels[0]
+	px, py := lv.r.ToPx(600, -300)
+	sx, sy := float64(lv.sx)+px/2, float64(lv.sy)+py/4
+	click(sx, sy)
+	if m.focus != "s1n" {
+		t.Fatalf("clicking s1n's marker: focus %q", m.focus)
+	}
+	for i := 0; i < 60; i++ {
+		m.followPlayer()
+	}
+	if v := m.camera(); math.Abs(m.zoom-focusZoom) > 0.01 || math.Abs(v.X+v.W/2-600) > 3 || math.Abs(v.Y+v.H/2-300) > 3 {
+		t.Fatalf("camera %+v x%.2f, want centred on (600,300) at x%.1f", v, m.zoom, focusZoom)
+	}
+	if !strings.Contains(plain(m.view()), "FOLLOWING s1n") {
+		t.Fatal("bar should say who is followed")
+	}
+	px, py = m.levels[0].r.ToPx(600, -300) // the camera moved: s1n is centred now
+	click(float64(m.levels[0].sx)+px/2, float64(m.levels[0].sy)+py/4)
+	if m.focus != "" {
+		t.Fatal("clicking the followed player again should stop")
+	}
+	for row, name := range m.rowPlayer { // a scoreboard row selects too
+		if name == "dgt" {
+			click(3, float64(row))
+		}
+	}
+	if m.focus != "dgt" {
+		t.Fatalf("clicking dgt's scoreboard row: focus %q", m.focus)
+	}
+	click(float64(m.levels[0].sx+1), float64(m.levels[0].sy+1)) // empty map corner
+	if m.focus != "" {
+		t.Fatal("clicking elsewhere on the map should stop following")
+	}
+}

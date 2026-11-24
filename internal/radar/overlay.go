@@ -113,8 +113,9 @@ func Sprites(r *Raster, cellW, cellH int, st *gotv.State, o Opts) []Use {
 		x, y := at(*pl.Pos)
 		dir := ((int(math.Round(pl.Yaw/22.5)) % 16) + 16) % 16 // 16 directions
 		side, label, bomb := pl.Side, strings.TrimSpace(labels[pl.Name]), pl.HasBomb
+		focus := strings.ToLower(pl.Name) == o.Focus
 		add(fmt.Sprintf("arrow:%s:%d", side, dir), 6, x, y, func() Sprite { return arrowSprite(m, teamColor(side), dir) })
-		add(fmt.Sprintf("player:%s:%s:%v", side, label, bomb), 7, x, y, func() Sprite { return playerSprite(m, teamColor(side), label, bomb) })
+		add(fmt.Sprintf("player:%s:%s:%v:%v", side, label, bomb, focus), 7, x, y, func() Sprite { return playerSprite(m, teamColor(side), label, bomb, focus) })
 	}
 	return out
 }
@@ -188,10 +189,13 @@ func arrowSprite(m sizes, team term.RGB, dir int) Sprite {
 
 // playerSprite is the dot (red ring for the bomb carrier) with the number inside, or
 // with a name tag on its right.
-func playerSprite(m sizes, team term.RGB, label string, bomb bool) Sprite {
+func playerSprite(m sizes, team term.RGB, label string, bomb, focus bool) Sprite {
 	k := m.text
 	named := len([]rune(label)) > 1
 	r := m.dot + m.stroke
+	if focus {
+		r += 1.5 * m.stroke // room for the halo
+	}
 	tagW := 0
 	if named {
 		tagW = font.MeasureString(basicfont.Face7x13, label).Ceil()*k + 4*k
@@ -200,6 +204,9 @@ func playerSprite(m sizes, team term.RGB, label string, bomb bool) Sprite {
 	w, h := d+tagW+int(2*m.stroke), max(d, 13*k)
 	c := newCanvas(w, h)
 	cx, cy := float64(d)/2, float64(h)/2
+	if focus { // the followed player: a white halo
+		c.disc(cx, cy, r+1.5*m.stroke, term.White, 1)
+	}
 	c.disc(cx, cy, r, term.Black, 0.85) // outline
 	ring := team
 	if bomb {
