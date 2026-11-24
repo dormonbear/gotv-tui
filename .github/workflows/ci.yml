@@ -1,0 +1,28 @@
+# Required check for pull requests into main (see branch protection).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test ./...
+      - run: sh scripts/next-version_test.sh
+      - name: cross-compile
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          for t in darwin/arm64 linux/amd64 windows/amd64; do
+            GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null .
+          done
