@@ -75,3 +75,17 @@ func TestFollowedPlayerRowIsFramed(t *testing.T) {
 		t.Fatalf("misaligned:\n%q\n%q", plain(rows[1]), plain(rows[2]))
 	}
 }
+
+func TestMatchText(t *testing.T) {
+	s := &gotv.Summary{CT: gotv.Team{Name: "FlyQuest", Score: 11}, T: gotv.Team{Name: "PVISION", Score: 5}, Round: 17}
+	if got := matchText(s); got != " · FlyQuest 11 : 5 PVISION · R17" {
+		t.Fatal(got)
+	}
+	s.Over = true
+	if got := matchText(s); got != " · FlyQuest 11 : 5 PVISION · ended" {
+		t.Fatal(got)
+	}
+	if matchText(nil) != "" {
+		t.Fatal("unknown match shows nothing")
+	}
+}

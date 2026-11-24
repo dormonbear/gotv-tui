@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -12,9 +13,15 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
+	"github.com/dormonbear/gotv-tui/internal/gotv"
 )
 
 type probeMsg feeds.Status
+
+type peekMsg struct {
+	url string
+	s   *gotv.Summary
+}
 
 type form struct {
 	index     int // -1 = new
@@ -27,6 +34,7 @@ type listModel struct {
 	file          string
 	feeds         []feeds.Feed
 	status        map[string]feeds.Status
+	match         map[string]*gotv.Summary // who is playing, once peeked
 	sel           int
 	form          *form
 	confirmDelete bool
@@ -38,7 +46,7 @@ type listModel struct {
 var stateColor = map[feeds.State]lipgloss.Color{feeds.Live: "2", feeds.Stale: "3", feeds.Waiting: "6", feeds.Offline: "8"}
 
 func newList(file string) (*listModel, tea.Cmd) {
-	m := &listModel{file: file, feeds: feeds.Load(file), status: map[string]feeds.Status{},
+	m := &listModel{file: file, feeds: feeds.Load(file), status: map[string]feeds.Status{}, match: map[string]*gotv.Summary{},
 		spin: spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("6"))))}
 	return m, m.refresh()
 }
@@ -52,6 +60,7 @@ func (m *listModel) probe(list ...feeds.Feed) tea.Cmd {
 	var cmds []tea.Cmd
 	for _, f := range list {
 		delete(m.status, f.URL)
+		delete(m.match, f.URL)
 		cmds = append(cmds, func() tea.Msg { return probeMsg(feeds.Probe(f)) })
 	}
 	return tea.Batch(cmds...)
@@ -88,6 +97,20 @@ func (m *listModel) update(msg tea.Msg) (string, tea.Cmd) {
 	switch msg := msg.(type) {
 	case probeMsg:
 		m.status[msg.URL] = feeds.Status(msg)
+		if msg.State == feeds.Live || msg.State == feeds.Stale { // read who is playing
+			url := msg.URL
+			return "", func() tea.Msg {
+				s, _ := gotv.Peek(context.Background(), url)
+				return peekMsg{url, s}
+			}
+		}
+		return "", nil
+	case peekMsg:
+		if msg.s != nil {
+			if _, probed := m.status[msg.url]; probed { // not re-probed meanwhile
+				m.match[msg.url] = msg.s
+			}
+		}
 		return "", nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -207,7 +230,7 @@ func (m *listModel) view() string {
 	for i, f := range m.feeds {
 		state := m.spin.View() + lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(" probing")
 		if s, ok := m.status[f.URL]; ok {
-			text := string(s.State) + " · " + s.Map
+			text := string(s.State) + " · " + s.Map + matchText(m.match[f.URL])
 			switch s.State {
 			case feeds.Offline:
 				text = "offline"
@@ -251,4 +274,16 @@ func (m *listModel) view() string {
 	}
 	b.WriteString(dim("sources saved in " + m.file))
 	return b.String()
+}
+
+// matchText is " · CT 11 : 5 T · R17" (or "· ended ..."), "" until peeked.
+func matchText(s *gotv.Summary) string {
+	if s == nil {
+		return ""
+	}
+	round := fmt.Sprintf(" · R%d", s.Round)
+	if s.Over {
+		round = " · ended"
+	}
+	return fmt.Sprintf(" · %s %d : %d %s%s", s.CT.Name, s.CT.Score, s.T.Score, s.T.Name, round)
 }
