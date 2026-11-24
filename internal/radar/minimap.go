@@ -49,118 +49,47 @@ func Facing(yaw float64) (string, int, int) {
 	return arrows[i], int(math.Round(math.Cos(a))), -int(math.Round(math.Sin(a)))
 }
 
-// Base is the static map layer, computed once per radar.
+// Base is the static map layer: the radar image itself, two pixels per cell (upper
+// and lower half block). nil where the radar is empty, so the terminal shows through.
 type Base struct {
-	CW, CH int
-	bg     []*term.RGB
-	dots   []byte
-	ink    []term.RGB
+	CW, CH   int
+	top, bot []*term.RGB
 }
 
-func sat(p []byte, i int) int {
-	r, g, b := int(p[i]), int(p[i+1]), int(p[i+2])
-	return max(r, g, b) - min(r, g, b)
-}
+// mapAlpha dims the radar so markers stand out on it, like a radar overlay.
+const mapAlpha = 0.78
 
-func absd(a, b byte) int {
-	if a > b {
-		return int(a - b)
-	}
-	return int(b - a)
-}
-
-// BuildBase, on the supersampled image:
-//   - roofs (low-saturation grey) covering most of a cell paint it as a light block, so
-//     buildings read as solid shapes and small crates (under half a cell) drop out;
-//   - other cells take the average floor colour, darkened so markers pop;
-//   - braille dots trace the outline / gaps between rooms and saturated painted lines
-//     (bombsite / spawn boxes), in their colour.
+// BuildBase averages the supersampled image into each half cell. A half that is mostly
+// empty (transparent, or the dark backdrop of lower-level radars) stays empty.
 func BuildBase(r *Raster) *Base {
 	W, H, p := r.W, r.H, r.Pixels
-	IW, IH := W*SS, H*SS
-	floor := func(x, y int) bool { return x >= 0 && y >= 0 && x < IW && y < IH && IsFloor(p, y*IW+x) }
-	dist := func(i, j int) int { return absd(p[i], p[j]) + absd(p[i+1], p[j+1]) + absd(p[i+2], p[j+2]) }
-	roof := func(i int) bool { return sat(p, i) < 16 && int(p[i])+int(p[i+1])+int(p[i+2]) > 240 } // olive floor ~212, roofs ~280
-	nb := [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
-	edge := func(x, y int) bool {
-		i := (y*IW + x) * 4
-		for _, d := range nb {
-			nx, ny := x+d[0], y+d[1]
-			if nx < 0 || ny < 0 || nx >= IW || ny >= IH {
-				continue // the view's edge isn't a wall (matters when zoomed in)
-			}
-			if !floor(nx, ny) {
-				return true
-			}
-			j := ((y+d[1])*IW + x + d[0]) * 4
-			if (sat(p, i) > 60 || sat(p, j) > 60) && dist(i, j) > 60 {
-				return true
+	IW := W * SS
+	CW, CH := (W+1)/2, (H+3)/4
+	b := &Base{CW: CW, CH: CH, top: make([]*term.RGB, CW*CH), bot: make([]*term.RGB, CW*CH)}
+	half := func(cx, cy, dy0 int) *term.RGB { // dots dy0, dy0+1 of the cell's 4 rows
+		var sum [3]int
+		n, all := 0, 0
+		for y := (cy*4 + dy0) * SS; y < (cy*4+dy0+2)*SS && y < H*SS; y++ {
+			for x := cx * 2 * SS; x < (cx*2+2)*SS && x < IW; x++ {
+				all++
+				if !IsFloor(p, y*IW+x) {
+					continue
+				}
+				i := (y*IW + x) * 4
+				sum[0], sum[1], sum[2] = sum[0]+int(p[i]), sum[1]+int(p[i+1]), sum[2]+int(p[i+2])
+				n++
 			}
 		}
-		return false
+		if n == 0 || n*2 < all {
+			return nil
+		}
+		c := term.Scale(term.RGB{uint8(sum[0] / n), uint8(sum[1] / n), uint8(sum[2] / n)}, mapAlpha)
+		return &c
 	}
-	CW, CH := (W+1)/2, (H+3)/4
-	b := &Base{CW: CW, CH: CH, bg: make([]*term.RGB, CW*CH), dots: make([]byte, CW*CH), ink: make([]term.RGB, CW*CH)}
-	half := SS * SS / 2
 	for cy := 0; cy < CH; cy++ {
 		for cx := 0; cx < CW; cx++ {
-			floorDots, n, rn, en := 0, 0, 0, 0
-			var code byte
-			var sum, rsum, esum [3]int
-			for dy := 0; dy < 4; dy++ {
-				for dx := 0; dx < 2; dx++ {
-					fp, ep := 0, 0
-					for sy := 0; sy < SS; sy++ {
-						for sx := 0; sx < SS; sx++ {
-							x, y := (cx*2+dx)*SS+sx, (cy*4+dy)*SS+sy
-							if !floor(x, y) {
-								continue
-							}
-							i := (y*IW + x) * 4
-							fp++
-							n++
-							for c := 0; c < 3; c++ {
-								sum[c] += int(p[i+c])
-							}
-							if roof(i) {
-								rn++
-								for c := 0; c < 3; c++ {
-									rsum[c] += int(p[i+c])
-								}
-							}
-							if edge(x, y) {
-								ep++
-								en++
-								for c := 0; c < 3; c++ {
-									esum[c] += int(p[i+c])
-								}
-							}
-						}
-					}
-					if fp >= half {
-						floorDots++
-					}
-					if ep > 0 {
-						code |= dotBit[dy][dx]
-					}
-				}
-			}
-			i := cy*CW + cx
-			b.dots[i] = code
-			avg := func(s [3]int, k int) term.RGB {
-				return term.RGB{uint8(s[0] / k), uint8(s[1] / k), uint8(s[2] / k)}
-			}
-			switch {
-			case rn > 0 && rn*2 >= n:
-				c := term.Scale(avg(rsum, rn), 0.95) // building
-				b.bg[i] = &c
-			case floorDots >= 4:
-				c := term.Scale(avg(sum, n), 0.62)
-				b.bg[i] = &c
-			}
-			if en > 0 { // the line's own colour, lifted so it reads on the darkened floor
-				b.ink[i] = term.Mix(avg(esum, en), term.White, 0.35)
-			}
+			b.top[cy*CW+cx] = half(cx, cy, 0)
+			b.bot[cy*CW+cx] = half(cx, cy, 2)
 		}
 	}
 	return b
@@ -185,7 +114,8 @@ type Opts struct {
 // Draw overlays the markers on this level over the static base, as ANSI rows.
 func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 	CW, CH := base.CW, base.CH
-	cellBg := append([]*term.RGB(nil), base.bg...)
+	top := append([]*term.RGB(nil), base.top...)
+	bot := append([]*term.RGB(nil), base.bot...)
 	toCell := func(v gotv.Vec) (int, int) {
 		px, py := r.ToPx(v.X, v.Y)
 		return int(math.Floor(px / 2)), int(math.Floor(py / 4))
@@ -205,12 +135,15 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 					continue
 				}
 				i := yy*CW + xx
-				under := term.Black
-				if cellBg[i] != nil {
-					under = *cellBg[i]
+				k := t * (1 - 0.35*d/(rc*rc)) // soft edge
+				for _, px := range []*[]*term.RGB{&top, &bot} {
+					under := term.Black
+					if (*px)[i] != nil {
+						under = *(*px)[i]
+					}
+					m := term.Mix(under, c, k)
+					(*px)[i] = &m
 				}
-				m := term.Mix(under, c, t*(1-0.35*d/(rc*rc))) // soft edge
-				cellBg[i] = &m
 			}
 		}
 	}
@@ -307,28 +240,38 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 		for cx := 0; cx < CW; cx++ {
 			i := cy*CW + cx
 			g, has := glyphs[i]
-			b := cellBg[i]
-			if has && g.bg != nil {
-				b = g.bg
-			}
-			if b != nil {
-				sb.WriteString(term.Bg(*b))
-			}
+			t, b := top[i], bot[i]
 			switch {
 			case has:
+				bg := g.bg
+				if bg == nil { // the map under the marker: blend of the two halves
+					switch {
+					case t != nil && b != nil:
+						m := term.Mix(*t, *b, 0.5)
+						bg = &m
+					case t != nil:
+						bg = t
+					default:
+						bg = b
+					}
+				}
+				if bg != nil {
+					sb.WriteString(term.Bg(*bg))
+				}
 				sb.WriteString(term.Fg(g.fg))
 				if g.bold {
 					sb.WriteString("\x1b[1m")
 				}
 				sb.WriteString(g.ch)
-			case base.dots[i] != 0:
-				sb.WriteString(term.Fg(base.ink[i]))
-				sb.WriteRune(rune(0x2800 + int(base.dots[i])))
+				sb.WriteString(term.Reset)
+			case t != nil && b != nil:
+				sb.WriteString(term.Fg(*t) + term.Bg(*b) + "▀" + term.Reset)
+			case t != nil:
+				sb.WriteString(term.Fg(*t) + "▀" + term.Reset)
+			case b != nil:
+				sb.WriteString(term.Fg(*b) + "▄" + term.Reset)
 			default:
 				sb.WriteByte(' ')
-			}
-			if has || b != nil || base.dots[i] != 0 {
-				sb.WriteString(term.Reset)
 			}
 		}
 		rows[cy] = sb.String()
