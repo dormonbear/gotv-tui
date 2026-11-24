@@ -3,9 +3,11 @@ package radar
 import (
 	"image"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/dormonbear/gotv-tui/internal/gotv"
+	"github.com/dormonbear/gotv-tui/internal/term"
 )
 
 var ansi = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -43,20 +45,28 @@ func TestResample(t *testing.T) {
 	}
 }
 
-func TestBuildBaseKeepsThinWall(t *testing.T) {
-	// 4x4 dots (2x1 cells) at SS=4; a 1px transparent column at x=7 splits two rooms,
-	// its sides (x=6, x=8) fall in different cells
-	r := &Raster{W: 4, H: 4, Pixels: make([]byte, 16*16*4)}
-	for y := 0; y < 16; y++ {
-		for x := 0; x < 16; x++ {
-			if x != 7 {
-				copy(r.Pixels[(y*16+x)*4:], []byte{80, 100, 110, 255})
-			}
+func TestBuildBaseIsTheImageInHalfBlocks(t *testing.T) {
+	// 2x4 dots = one cell at SS=4: 8x16 px. Top half red, bottom half empty
+	// (transparent), except the bottom-right quarter which is the near-black
+	// backdrop of lower-level radars (also empty).
+	r := &Raster{W: 2, H: 4, Pixels: make([]byte, 8*16*4)}
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			copy(r.Pixels[(y*8+x)*4:], []byte{200, 40, 40, 255})
+		}
+	}
+	for y := 12; y < 16; y++ {
+		for x := 4; x < 8; x++ {
+			copy(r.Pixels[(y*8+x)*4:], []byte{8, 8, 8, 255})
 		}
 	}
 	b := BuildBase(r)
-	if b.CW != 2 || b.dots[0]&0x8 == 0 || b.dots[1]&0x1 == 0 || b.bg[0] == nil || b.bg[1] == nil {
-		t.Fatalf("CW=%d dots=%v bg=%v", b.CW, b.dots, b.bg)
+	if b.CW != 1 || b.CH != 1 || b.top[0] == nil || *b.top[0] != term.Scale(term.RGB{200, 40, 40}, mapAlpha) || b.bot[0] != nil {
+		t.Fatalf("top=%v bot=%v", b.top[0], b.bot[0])
+	}
+	row := Draw(r, b, nil, Opts{})[0]
+	if !strings.Contains(row, "▀") || strings.Contains(row, "48;2") {
+		t.Fatalf("want an upper half block with no background: %q", row)
 	}
 }
 
@@ -131,15 +141,5 @@ func TestBoxView(t *testing.T) {
 	}
 	if v := b.View(300, 300, 99); v.W != 100 {
 		t.Fatalf("zoom capped at MaxZoom: %+v", v)
-	}
-}
-
-func TestBuildBaseViewEdgeIsNoWall(t *testing.T) {
-	r := &Raster{W: 4, H: 4, Pixels: make([]byte, 16*16*4)} // all floor, cut by the view
-	for i := 0; i < len(r.Pixels); i += 4 {
-		copy(r.Pixels[i:], []byte{80, 100, 110, 255})
-	}
-	if b := BuildBase(r); b.dots[0] != 0 || b.dots[1] != 0 {
-		t.Fatalf("view edge drawn as a wall: %v", b.dots)
 	}
 }
