@@ -51,12 +51,13 @@ func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
 		return Team{Name: n, Score: ts.Score()}
 	}
 	s := State{
-		Map:    mapName,
-		CT:     team(gs.TeamCounterTerrorists(), "CT"),
-		T:      team(gs.TeamTerrorists(), "T"),
-		Round:  played + 1,
-		Freeze: gs.IsFreezetimePeriod(),
-		Warmup: gs.IsWarmupPeriod(),
+		Map:         mapName,
+		CT:          team(gs.TeamCounterTerrorists(), "CT"),
+		T:           team(gs.TeamTerrorists(), "T"),
+		Round:       played + 1,
+		Freeze:      gs.IsFreezetimePeriod(),
+		Warmup:      gs.IsWarmupPeriod(),
+		Over:        gs.GamePhase() == common.GamePhaseGameEnded || gs.GamePhase() == common.GamePhaseGameOver,
 		SecondsLeft: -1,
 	}
 
@@ -142,9 +143,12 @@ func bombState(gs *demoinfocs.GameState, now float64) *Bomb {
 		if v, ok := prop(e, "m_bBombDefused"); ok && v.BoolVal() {
 			return nil
 		}
-		b := &Bomb{Pos: *vec(e.Position()), State: BombPlanted, SecondsLeft: -1}
+		b := &Bomb{Pos: *vec(e.Position()), State: BombPlanted, SecondsLeft: -1, DefuseLeft: -1}
 		if v, ok := prop(e, "m_bBeingDefused"); ok && v.BoolVal() {
 			b.State = BombDefusing
+			if d, ok := prop(e, "m_flDefuseCountDown"); ok {
+				b.DefuseLeft = max(0, float64(d.Float())-now)
+			}
 		}
 		if v, ok := prop(e, "m_flC4Blow"); ok {
 			b.SecondsLeft = max(0, float64(v.Float())-now)
@@ -159,5 +163,5 @@ func bombState(gs *demoinfocs.GameState, now float64) *Bomb {
 	if pos.X == 0 && pos.Y == 0 && pos.Z == 0 {
 		return nil
 	}
-	return &Bomb{Pos: *vec(pos), State: BombDropped, SecondsLeft: -1}
+	return &Bomb{Pos: *vec(pos), State: BombDropped, SecondsLeft: -1, DefuseLeft: -1}
 }

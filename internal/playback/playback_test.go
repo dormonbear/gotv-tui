@@ -26,7 +26,7 @@ func TestBurstIsReleasedSmoothly(t *testing.T) {
 	step(62.5, 164, nil)
 	step(125, 168, nil)
 	step(187.5, 172, []string{"kill"})
-	step(187.5, -1, nil) // nothing new due
+	step(187.5, -1, nil)     // nothing new due
 	pb.PushFrame(1000, 1000) // far ahead: jump to 904 and flush the stale queue
 	step(250, 256, nil)
 	pb.PushFrame(1004, 1004)

@@ -44,9 +44,9 @@ type Player struct {
 type UtilityKind string
 
 const (
-	USmoke     UtilityKind = "smoke"     // active smoke cloud
-	UFire      UtilityKind = "fire"      // burning inferno point
-	UHE        UtilityKind = "he"        // grenades in flight
+	USmoke     UtilityKind = "smoke" // active smoke cloud
+	UFire      UtilityKind = "fire"  // burning inferno point
+	UHE        UtilityKind = "he"    // grenades in flight
 	UFlash     UtilityKind = "flash"
 	UMolotov   UtilityKind = "molotov"
 	UDecoy     UtilityKind = "decoy"
@@ -70,6 +70,7 @@ type Bomb struct {
 	Pos         Vec
 	State       BombState
 	SecondsLeft float64 // < 0 when unknown
+	DefuseLeft  float64 // < 0 unless being defused
 }
 
 type Team struct {
@@ -85,6 +86,7 @@ type State struct {
 	Freeze      bool
 	Warmup      bool
 	Paused      bool
+	Over        bool // match finished
 	Bomb        *Bomb
 	Players     []Player
 	Utility     []Utility

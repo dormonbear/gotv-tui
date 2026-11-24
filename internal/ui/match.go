@@ -41,18 +41,18 @@ type levelMap struct {
 }
 
 type matchModel struct {
-	url    string
-	cancel context.CancelFunc
-	ch     chan tea.Msg
-	st     *gotv.State
-	log    []gotv.Event // newest first
-	kills  []radar.KillMark
-	status string
-	assets *radar.Assets
-	box    radar.Box
-	levels []*levelMap
+	url     string
+	cancel  context.CancelFunc
+	ch      chan tea.Msg
+	st      *gotv.State
+	log     []gotv.Event // newest first
+	kills   []radar.KillMark
+	status  string
+	assets  *radar.Assets
+	box     radar.Box
+	levels  []*levelMap
 	loading string // map being loaded
-	w, h   int
+	w, h    int
 }
 
 func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
@@ -145,35 +145,43 @@ func mmss(s float64) string {
 	return fmt.Sprintf("%d:%02d", int(s)/60, int(s)%60)
 }
 
+// header puts the clocks first: when the line is cut to the column width only the
+// team names and map lose characters, never a countdown.
 func header(st *gotv.State) string {
-	phase := ""
+	var clock string
 	switch {
+	case st.Over:
+		clock = bold("match over")
+	case st.SecondsLeft < 0:
+		clock = bold("--:--")
 	case st.Warmup:
-		phase = " warmup"
+		clock = bold(mmss(st.SecondsLeft)) + dim(" warmup")
 	case st.Paused:
-		phase = " paused"
+		clock = bold(mmss(st.SecondsLeft)) + dim(" paused")
 	case st.Freeze:
-		phase = " freeze"
+		clock = bold(mmss(st.SecondsLeft)) + dim(" freeze")
+	default:
+		clock = bold(mmss(st.SecondsLeft))
 	}
 	bomb := ""
-	if b := st.Bomb; b != nil && b.State != gotv.BombDropped {
+	if b := st.Bomb; b != nil && b.State != gotv.BombDropped && !st.Over {
 		label := "BOMB"
-		if b.State == gotv.BombDefusing {
-			label = "DEFUSING"
-		}
 		if b.SecondsLeft >= 0 {
 			label += fmt.Sprintf(" %ds", int(math.Ceil(b.SecondsLeft)))
 		}
+		if b.State == gotv.BombDefusing {
+			label += " · DEFUSING"
+			if b.DefuseLeft >= 0 {
+				label += fmt.Sprintf(" %.1fs", b.DefuseLeft)
+			}
+		}
 		bomb = "  \x1b[41;1m " + label + " " + reset
 	}
-	clock := "--:--"
-	if st.SecondsLeft >= 0 {
-		clock = mmss(st.SecondsLeft)
-	}
-	return fmt.Sprintf("%s%s %s %d%s : %s%s%d %s%s  %s  %s%s",
+	return fmt.Sprintf(" %s%s  %s%s%s %d%s : %s%s%d %s%s  %s",
+		clock, bomb,
 		term.Fg(term.CT), boldOn, st.CT.Name, st.CT.Score, reset,
 		term.Fg(term.T), boldOn, st.T.Score, st.T.Name, reset,
-		bold(clock), dim(fmt.Sprintf("R%d %s%s", st.Round, st.Map, phase)), bomb)
+		dim(fmt.Sprintf("R%d %s", st.Round, st.Map)))
 }
 
 var frame = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("8"))
