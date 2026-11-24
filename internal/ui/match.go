@@ -280,7 +280,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 				img = a.Lower
 			}
 			r := radar.Rasterize(img, a.Overview, view, (levelW-2)*2, (levelH-2-titleRows)*4, m.aspect)
-			m.levels = append(m.levels, &levelMap{lower: lower, w: levelW, h: levelH, view: view, r: r, base: radar.BuildBase(r)})
+			m.levels = append(m.levels, &levelMap{lower: lower, w: levelW, h: levelH, view: view, r: r, base: radar.BuildBase(r, m.zoom)})
 		}
 	}
 	var boxes []string
