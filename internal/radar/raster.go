@@ -1,7 +1,9 @@
 package radar
 
 import (
+	"bytes"
 	"image"
+	"image/png"
 	"math"
 )
 
@@ -156,3 +158,21 @@ func (b Box) View(cx, cy, z float64) Box {
 
 // Center is the middle of b.
 func (b Box) Center() (float64, float64) { return b.X + b.W/2, b.Y + b.H/2 }
+
+// ImagePNG renders view of img as a PNG of w x h pixels for the terminal to show.
+// Empty areas (and the dark backdrop of lower-level radars) are transparent; the map
+// is dimmed by alpha so markers drawn over it stand out.
+func ImagePNG(img *image.NRGBA, view Box, w, h int, alpha float64) ([]byte, error) {
+	px := Resample(img, view, w, h)
+	out := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for i := 0; i < w*h; i++ {
+		if !IsFloor(px, i) {
+			continue
+		}
+		o := out.Pix[i*4:]
+		o[0], o[1], o[2], o[3] = byte(float64(px[i*4])*alpha), byte(float64(px[i*4+1])*alpha), byte(float64(px[i*4+2])*alpha), px[i*4+3]
+	}
+	var b bytes.Buffer
+	err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&b, out)
+	return b.Bytes(), err
+}

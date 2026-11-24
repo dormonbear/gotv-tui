@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"time"
@@ -40,8 +41,9 @@ type levelMap struct {
 	lower  bool
 	w, h   int
 	view   radar.Box
-	ox, oy int // raster's top-left cell inside the map block
-	sx, sy int // ... and on screen, for mouse hits
+	opts   radar.Opts // markers to draw this frame
+	ox, oy int        // raster's top-left cell inside the map block
+	sx, sy int        // ... and on screen, for mouse hits
 	r      *radar.Raster
 	base   *radar.Base
 }
@@ -70,9 +72,17 @@ type matchModel struct {
 	shot      *director.Shot
 	soon      []playback.Soon[gotv.Event] // events queued ahead of the screen
 	settling  bool                        // camera still moving to the last shot
-	camX      float64                     // camera centre, 1024 radar space
-	camY      float64
-	w, h      int
+	switchX   int                         // screen column where the director switch starts
+	switchW   int                         // its width; it sits on screen row 0
+	focus     string                      // followed player (lowercase), "" for none
+	rowPlayer map[int]string              // scoreboard screen row -> player (lowercase)
+	// kitty graphics: images go to out (nil: draw the map in half blocks)
+	out      io.Writer
+	uploaded string // map whose radar images the terminal holds
+	sprites  spriteLayer
+	camX     float64 // camera centre, 1024 radar space
+	camY     float64
+	w, h     int
 }
 
 func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
@@ -163,6 +173,9 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		m.soon = msg
 		return m.wait()
 	case animMsg:
+		if m.focus != "" {
+			return m.followPlayer()
+		}
 		if m.directing {
 			return m.follow()
 		}
@@ -262,10 +275,21 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 	}
 	var boxes []string
 	for i, lv := range m.levels {
-		lines := radar.Draw(lv.r, lv.base, m.st, radar.Opts{
+		lv.opts = radar.Opts{
 			Kills: m.kills, Nums: nums, Now: time.Now(), Lower: lv.lower,
 			LowerBelow: a.Overview.LowerBelow, Sites: radar.SitesOn(a.Map, lv.lower, a.Overview.Sites),
-		})
+			ImageUnder: m.images(),
+			Names:      m.zoom >= namesFrom,
+			Focus:      m.focus,
+		}
+		var lines []string
+		if m.images() { // map and markers are terminal images: the text is blank
+			for y := 0; y < lv.base.CH; y++ {
+				lines = append(lines, strings.Repeat(" ", lv.base.CW))
+			}
+		} else {
+			lines = radar.Draw(lv.r, lv.base, m.st, lv.opts)
+		}
 		if titleRows > 0 {
 			name := " upper"
 			if lv.lower {
@@ -300,8 +324,17 @@ func (m *matchModel) view() string {
 	} else {
 		nums = PlayerNumbers(m.st.Players)
 		left = append(left, header(m.st))
-		left = append(left, TeamTable(gotv.CT, m.st.CT, m.st.Players, nums)...)
-		left = append(left, TeamTable(gotv.T, m.st.T, m.st.Players, nums)...)
+		m.rowPlayer = map[int]string{}
+		for _, side := range []struct {
+			s gotv.Side
+			t gotv.Team
+		}{{gotv.CT, m.st.CT}, {gotv.T, m.st.T}} {
+			top := len(left) + 1 // below the team's title row
+			for i, p := range teamRows(side.s, m.st.Players, nums) {
+				m.rowPlayer[top+i] = strings.ToLower(p.Name)
+			}
+			left = append(left, TeamTable(side.s, side.t, m.st.Players, nums)...)
+		}
 	}
 	left = append(left, "", bold("Game log"))
 	if len(m.log) == 0 {
@@ -314,26 +347,65 @@ func (m *matchModel) view() string {
 		left[i] = ansi.Truncate(left[i], leftW, "")
 	}
 	leftBlock := lipgloss.NewStyle().Width(leftW).Height(body).MaxHeight(body).Render(strings.Join(left, "\n"))
-	mapStr := m.mapView(mapW, body, nums)
-	mapBlock := lipgloss.Place(mapW, body, lipgloss.Center, lipgloss.Center, mapStr)
+	toggle := m.directorSwitch(mapW)
+	m.switchX = leftW + 1 // clicks on row 0 from here over the switch toggle it
+	mapH := body - 1      // row 0 is the director switch
+	mapStr := m.mapView(mapW, mapH, nums)
+	mapBlock := toggle + "\n" + lipgloss.Place(mapW, mapH, lipgloss.Center, lipgloss.Center, mapStr)
 	// where Place put the map: lipgloss centres with gap - round(gap/2) before it
 	before := func(gap int) int { return gap - int(math.Round(float64(gap)*0.5)) }
 	offX := leftW + 1 + before(mapW-lipgloss.Width(mapStr))
-	offY := before(body - lipgloss.Height(mapStr))
+	offY := 1 + before(mapH-lipgloss.Height(mapStr))
 	for _, lv := range m.levels {
 		lv.sx, lv.sy = offX+lv.ox, offY+lv.oy
 	}
+	m.placeImages()
 	zoom := ""
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	dir := " d director ·"
-	if m.directing {
-		dir = " director: whole map ·"
-		if m.shot != nil {
-			dir = " director: " + m.shot.Reason + " ·"
+	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, " ", mapBlock) + "\n" + footer
+}
+
+var (
+	switchOn    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("2"))
+	switchOff   = lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Background(lipgloss.Color("8"))
+	switchFocus = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
+)
+
+// focusName is the followed player's name as shown in game.
+func (m *matchModel) focusName() string {
+	if m.st != nil {
+		for _, p := range m.st.Players {
+			if strings.ToLower(p.Name) == m.focus {
+				return p.Name
+			}
 		}
 	}
-	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources ·%s wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", dir, zoom, m.status), m.w, ""))
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, " ", mapBlock) + "\n" + footer
+	return m.focus
+}
+
+// directorSwitch is the director toggle above the map: what it shows when on, a
+// hint when off. Clicking it toggles too.
+func (m *matchModel) directorSwitch(width int) string {
+	var sw, note string
+	if m.focus != "" {
+		sw = switchFocus.Render(" ◎ FOLLOWING " + m.focusName() + " ")
+		note = dim(" click them again or elsewhere to stop")
+		m.switchW = 0 // following, not the director: the bar isn't a switch now
+		return ansi.Truncate(sw+note, width, "")
+	}
+	if m.directing {
+		sw = switchOn.Render(" ● DIRECTOR ON ")
+		note = " whole map"
+		if m.shot != nil {
+			note = " " + m.shot.Reason
+		}
+	} else {
+		sw = switchOff.Render(" ○ DIRECTOR OFF ")
+		note = dim(" press d or click")
+	}
+	m.switchW = lipgloss.Width(sw)
+	return ansi.Truncate(sw+note, width, "")
 }

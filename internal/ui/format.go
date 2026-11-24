@@ -161,20 +161,13 @@ func pad(s string, w int) string { // pad/cut a plain string to exactly w cells
 func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[string]int) []string {
 	c := sideColor(side)
 	out := []string{term.Fg(c) + boldOn + title(side, t) + reset + dim(columns)}
-	var rows []gotv.Player
-	for _, p := range players {
-		if p.Side == side {
-			rows = append(rows, p)
-		}
-	}
 	num := func(p gotv.Player) int {
 		if n, ok := nums[strings.ToLower(p.Name)]; ok {
 			return n
 		}
 		return 9
 	}
-	sort.SliceStable(rows, func(i, j int) bool { return num(rows[i]) < num(rows[j]) })
-	for _, p := range rows {
+	for _, p := range teamRows(side, players, nums) {
 		badge := " " + " " + " "
 		if n := num(p); n < 9 {
 			badge = fmt.Sprintf(" %d ", n)
@@ -209,4 +202,22 @@ func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[stri
 		out = append(out, row)
 	}
 	return out
+}
+
+// teamRows is side's players in scoreboard order (by number).
+func teamRows(side gotv.Side, players []gotv.Player, nums map[string]int) []gotv.Player {
+	var rows []gotv.Player
+	for _, p := range players {
+		if p.Side == side {
+			rows = append(rows, p)
+		}
+	}
+	num := func(p gotv.Player) int {
+		if n, ok := nums[strings.ToLower(p.Name)]; ok {
+			return n
+		}
+		return 9
+	}
+	sort.SliceStable(rows, func(i, j int) bool { return num(rows[i]) < num(rows[j]) })
+	return rows
 }

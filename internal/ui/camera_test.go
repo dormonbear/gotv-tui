@@ -51,7 +51,7 @@ func TestMouseHitsTheRightRadarPoint(t *testing.T) {
 		}
 		m.st = &gotv.State{Players: []gotv.Player{{Name: "p", Side: gotv.T, Alive: true, Pos: &gotv.Vec{X: 600, Y: -300, Z: z}}}}
 		x, y := cellOf(t, m.view(), '1', leftMax)
-		ax, ay, ok := m.radarAt(x, y)
+		ax, ay, ok := m.radarAt(float64(x)+0.5, float64(y)+0.5)
 		// the player is somewhere in that cell, so the hit is within half a cell
 		r := m.levels[len(m.levels)-1].r
 		x0, y0 := r.RadarAt(0, 0)
@@ -99,13 +99,13 @@ func dragOn(t *testing.T, lower bool) {
 	m.view()
 	lv := m.levels[len(m.levels)-1]
 	x, y := lv.sx+20, lv.sy+8
-	ax, ay, _ := m.radarAt(x, y)
+	ax, ay, _ := m.radarAt(float64(x)+0.5, float64(y)+0.5)
 	m.mouse(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	m.mouse(tea.MouseMsg{X: x + 5, Y: y + 2, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 	m.mouse(tea.MouseMsg{X: x + 7, Y: y + 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 	m.mouse(tea.MouseMsg{X: x + 7, Y: y + 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 	m.view()
-	if bx, by, _ := m.radarAt(x+7, y+3); math.Abs(bx-ax) > 1e-6 || math.Abs(by-ay) > 1e-6 {
+	if bx, by, _ := m.radarAt(float64(x+7)+0.5, float64(y+3)+0.5); math.Abs(bx-ax) > 1e-6 || math.Abs(by-ay) > 1e-6 {
 		t.Fatalf("lower=%v: grabbed (%.1f,%.1f), now under pointer (%.1f,%.1f)", lower, ax, ay, bx, by)
 	}
 	if m.levels[0].view != m.levels[len(m.levels)-1].view {
@@ -151,5 +151,67 @@ func TestDirectorCameraFollowsTheShot(t *testing.T) {
 	m.cameraKey("left")
 	if m.directing {
 		t.Fatal("manual input should end directing")
+	}
+}
+
+func TestDirectorSwitchClickAndLabel(t *testing.T) {
+	m := testMatch(false)
+	if !strings.Contains(plain(m.view()), "DIRECTOR OFF") {
+		t.Fatal("switch should show OFF")
+	}
+	click := tea.MouseMsg{X: m.switchX + 2, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}
+	m.mouse(click)
+	if !m.directing || !strings.Contains(plain(m.view()), "DIRECTOR ON") {
+		t.Fatal("click should turn the director on")
+	}
+	m.mouse(click)
+	if m.directing {
+		t.Fatal("second click should turn it off")
+	}
+}
+
+func TestClickAPlayerToFollowThem(t *testing.T) {
+	m := testMatch(false)
+	m.st = &gotv.State{Players: []gotv.Player{
+		{Name: "s1n", Side: gotv.T, Alive: true, Pos: &gotv.Vec{X: 600, Y: -300}},
+		{Name: "dgt", Side: gotv.CT, Alive: true, Pos: &gotv.Vec{X: 300, Y: -700}},
+	}}
+	m.view()
+	click := func(x, y float64) {
+		m.mouse(tea.MouseMsg{X: int(x), Y: int(y), Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		m.mouse(tea.MouseMsg{X: int(x), Y: int(y), Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	}
+	lv := m.levels[0]
+	px, py := lv.r.ToPx(600, -300)
+	sx, sy := float64(lv.sx)+px/2, float64(lv.sy)+py/4
+	click(sx, sy)
+	if m.focus != "s1n" {
+		t.Fatalf("clicking s1n's marker: focus %q", m.focus)
+	}
+	for i := 0; i < 60; i++ {
+		m.followPlayer()
+	}
+	if v := m.camera(); math.Abs(m.zoom-focusZoom) > 0.01 || math.Abs(v.X+v.W/2-600) > 3 || math.Abs(v.Y+v.H/2-300) > 3 {
+		t.Fatalf("camera %+v x%.2f, want centred on (600,300) at x%.1f", v, m.zoom, focusZoom)
+	}
+	if !strings.Contains(plain(m.view()), "FOLLOWING s1n") {
+		t.Fatal("bar should say who is followed")
+	}
+	px, py = m.levels[0].r.ToPx(600, -300) // the camera moved: s1n is centred now
+	click(float64(m.levels[0].sx)+px/2, float64(m.levels[0].sy)+py/4)
+	if m.focus != "" {
+		t.Fatal("clicking the followed player again should stop")
+	}
+	for row, name := range m.rowPlayer { // a scoreboard row selects too
+		if name == "dgt" {
+			click(3, float64(row))
+		}
+	}
+	if m.focus != "dgt" {
+		t.Fatalf("clicking dgt's scoreboard row: focus %q", m.focus)
+	}
+	click(float64(m.levels[0].sx+1), float64(m.levels[0].sy+1)) // empty map corner
+	if m.focus != "" {
+		t.Fatal("clicking elsewhere on the map should stop following")
 	}
 }

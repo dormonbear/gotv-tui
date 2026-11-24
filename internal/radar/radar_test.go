@@ -3,14 +3,18 @@ package radar
 import (
 	"image"
 	"regexp"
+	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/dormonbear/gotv-tui/internal/gotv"
+	"github.com/dormonbear/gotv-tui/internal/term"
 )
 
-var ansi = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+var sgr = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
-func strip(s string) []rune { return []rune(ansi.ReplaceAllString(s, "")) }
+func strip(s string) []rune { return []rune(sgr.ReplaceAllString(s, "")) }
 
 func TestParseOverview(t *testing.T) {
 	o := ParseOverview(`"de_nuke" { "pos_x" "-3453" "pos_y" "2887" "scale" "7"
@@ -43,20 +47,28 @@ func TestResample(t *testing.T) {
 	}
 }
 
-func TestBuildBaseKeepsThinWall(t *testing.T) {
-	// 4x4 dots (2x1 cells) at SS=4; a 1px transparent column at x=7 splits two rooms,
-	// its sides (x=6, x=8) fall in different cells
-	r := &Raster{W: 4, H: 4, Pixels: make([]byte, 16*16*4)}
-	for y := 0; y < 16; y++ {
-		for x := 0; x < 16; x++ {
-			if x != 7 {
-				copy(r.Pixels[(y*16+x)*4:], []byte{80, 100, 110, 255})
-			}
+func TestBuildBaseIsTheImageInHalfBlocks(t *testing.T) {
+	// 2x4 dots = one cell at SS=4: 8x16 px. Top half red, bottom half empty
+	// (transparent), except the bottom-right quarter which is the near-black
+	// backdrop of lower-level radars (also empty).
+	r := &Raster{W: 2, H: 4, Pixels: make([]byte, 8*16*4)}
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			copy(r.Pixels[(y*8+x)*4:], []byte{200, 40, 40, 255})
+		}
+	}
+	for y := 12; y < 16; y++ {
+		for x := 4; x < 8; x++ {
+			copy(r.Pixels[(y*8+x)*4:], []byte{8, 8, 8, 255})
 		}
 	}
 	b := BuildBase(r)
-	if b.CW != 2 || b.dots[0]&0x8 == 0 || b.dots[1]&0x1 == 0 || b.bg[0] == nil || b.bg[1] == nil {
-		t.Fatalf("CW=%d dots=%v bg=%v", b.CW, b.dots, b.bg)
+	if b.CW != 1 || b.CH != 1 || b.top[0] == nil || *b.top[0] != term.Scale(term.RGB{200, 40, 40}, mapAlpha) || b.bot[0] != nil {
+		t.Fatalf("top=%v bot=%v", b.top[0], b.bot[0])
+	}
+	row := Draw(r, b, nil, Opts{})[0]
+	if !strings.Contains(row, "▀") || strings.Contains(row, "48;2") {
+		t.Fatalf("want an upper half block with no background: %q", row)
 	}
 }
 
@@ -134,12 +146,50 @@ func TestBoxView(t *testing.T) {
 	}
 }
 
-func TestBuildBaseViewEdgeIsNoWall(t *testing.T) {
-	r := &Raster{W: 4, H: 4, Pixels: make([]byte, 16*16*4)} // all floor, cut by the view
-	for i := 0; i < len(r.Pixels); i += 4 {
-		copy(r.Pixels[i:], []byte{80, 100, 110, 255})
+func TestDrawLeavesMapCellsBlankOverAnImage(t *testing.T) {
+	const W, H = 8, 8 // 4x2 cells
+	r := &Raster{W: W, H: H, Pixels: make([]byte, W*SS*H*SS*4), Aspect: 2, ov: Overview{Scale: 1}, k: 1, ky: 1}
+	for i := range r.Pixels {
+		r.Pixels[i] = 255
 	}
-	if b := BuildBase(r); b.dots[0] != 0 || b.dots[1] != 0 {
-		t.Fatalf("view edge drawn as a wall: %v", b.dots)
+	st := &gotv.State{Players: []gotv.Player{{Name: "a", Side: gotv.T, Alive: true, Pos: &gotv.Vec{X: 5, Y: -1}}}}
+	rows := Draw(r, BuildBase(r), st, Opts{ImageUnder: true, Nums: map[string]int{"a": 2}})
+	for y, row := range rows {
+		if w := ansi.StringWidth(row); w != 4 {
+			t.Fatalf("row %d is %d cells wide, want 4: %q", y, w, row)
+		}
+	}
+	// x=5 -> col 2 is the player (opaque badge), col 3 its arrow; cols 0, 1 are blank
+	// with no background so the image shows; row 1 is all image.
+	if !strings.HasPrefix(rows[0], "  ") || !strings.Contains(rows[0], "48;2") || string(strip(rows[0])[2]) != "2" {
+		t.Fatalf("row 0: %q", rows[0])
+	}
+	if rows[1] != "    " {
+		t.Fatalf("row 1: %q", rows[1])
+	}
+}
+
+func TestNamesWhereTheyFitNumbersElsewhere(t *testing.T) {
+	const W, H = 60, 16 // 30x4 cells
+	r := &Raster{W: W, H: H, Pixels: make([]byte, W*SS*H*SS*4), Aspect: 2, ov: Overview{Scale: 1}, k: 1, ky: 1}
+	p := func(name string, x, row float64) gotv.Player {
+		return gotv.Player{Name: name, Side: gotv.T, Alive: true, Yaw: 180, Pos: &gotv.Vec{X: x * 2, Y: -row * 4}}
+	}
+	st := &gotv.State{Players: []gotv.Player{
+		p("s1n", 2, 0),     // room to the right: named
+		p("JBa", 10, 2),    // ...
+		p("Lake", 12, 2),   // only one cell gap after JBa's label would be needed: JBa falls back
+		p("Swisher", 2, 3), // fits
+	}}
+	rows := Draw(r, BuildBase(r), st, Opts{Names: true, Nums: map[string]int{"s1n": 1, "jba": 2, "lake": 3, "swisher": 4}})
+	got := func(y int) string { return strings.TrimRight(string(strip(rows[y])), " ") }
+	if !strings.Contains(got(0), " s1n") || !strings.Contains(got(3), " Swisher") {
+		t.Fatalf("named rows: %q / %q", got(0), got(3))
+	}
+	if row := got(2); strings.Contains(row, "JBa") || !strings.Contains(row, "2") || !strings.Contains(row, " Lake") {
+		t.Fatalf("crowded row: %q (JBa should fall back to its number, Lake gets its name)", row)
+	}
+	if rows := Draw(r, BuildBase(r), st, Opts{Nums: map[string]int{"s1n": 1}}); strings.Contains(string(strip(rows[0])), "s1n") {
+		t.Fatal("names shown with Names off")
 	}
 }
