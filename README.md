@@ -50,7 +50,7 @@ subjects; see [CONTRIBUTING.md](CONTRIBUTING.md).
 | Where | Keys |
 |---|---|
 | Source list | `↑/↓` select · `enter` open · `a` add · `e` edit · `d` delete · `r` refresh · `q` quit |
-| Match | mouse wheel or `+`/`-` zoom map (around the pointer) · `←↑↓→` or `hjkl` pan · `0` whole map · `b` back to sources · `q` quit |
+| Match | mouse wheel or `+`/`-` zoom map (around the pointer) · drag or `←↑↓→`/`hjkl` pan · `0` whole map · `b` back to sources · `q` quit |
 
 Sources are saved in `~/.config/gotv-tui/feeds.json` and start from a few presets
 (PGL / BLAST / Challengermode relays published for past and current Majors). Each

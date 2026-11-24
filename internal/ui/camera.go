@@ -66,6 +66,20 @@ func (m *matchModel) step() tea.Cmd {
 	return animTick()
 }
 
+// panCells moves the view by (dx, dy) screen cells, the other way: the map follows
+// the pointer. It stops a running zoom so the two don't fight.
+func (m *matchModel) panCells(dx, dy int) {
+	if len(m.levels) == 0 {
+		return
+	}
+	r := m.levels[0].r
+	x0, y0 := r.RadarAt(0, 0)
+	x1, y1 := r.RadarAt(2, 4) // one cell
+	m.zoomTo, m.moving = m.zoom, false
+	m.camX -= float64(dx) * (x1 - x0)
+	m.camY -= float64(dy) * (y1 - y0)
+}
+
 // radarAt is the radar point under screen cell (x, y), if it is on a map.
 func (m *matchModel) radarAt(x, y int) (float64, float64, bool) {
 	for _, lv := range m.levels {
@@ -103,8 +117,30 @@ func (m *matchModel) cameraKey(k string) tea.Cmd {
 	return nil
 }
 
+// drag pans so the radar point grabbed stays under the pointer.
+type drag struct {
+	on   bool
+	x, y int // last pointer cell
+}
+
 func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
-	if m.assets == nil || e.Action != tea.MouseActionPress {
+	if m.assets == nil {
+		return nil
+	}
+	switch {
+	case e.Button == tea.MouseButtonLeft && e.Action == tea.MouseActionPress:
+		if _, _, ok := m.radarAt(e.X, e.Y); ok {
+			m.drag = drag{on: true, x: e.X, y: e.Y}
+		}
+		return nil
+	case e.Action == tea.MouseActionRelease:
+		m.drag.on = false
+		return nil
+	case e.Action == tea.MouseActionMotion && m.drag.on:
+		m.panCells(e.X-m.drag.x, e.Y-m.drag.y)
+		m.drag.x, m.drag.y = e.X, e.Y
+		return nil
+	case e.Action != tea.MouseActionPress:
 		return nil
 	}
 	f := 0.0
