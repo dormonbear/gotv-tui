@@ -29,6 +29,9 @@ func pending(url string) *matchModel {
 }
 
 func (a *App) Init() tea.Cmd {
+	if a.out != nil {
+		term.PixelMouse(a.out, true) // matchModel.pointer reads pixels when images are on
+	}
 	if a.match != nil {
 		m, cmd := newMatch(a.match.url, a.w, a.h)
 		m.out = a.out

@@ -85,5 +85,15 @@ func PlaceImage(w io.Writer, id uint32, x, y, cols, rows int, src Rect) error {
 // HideImage removes the placements of image id but keeps it stored.
 func HideImage(w io.Writer, id uint32) { fmt.Fprintf(w, "\x1b_Ga=d,d=i,i=%d,q=2\x1b\\", id) }
 
+// PixelMouse switches mouse reports to pixel coordinates (SGR-pixel, mode 1016), so
+// dragging the image map can move it by single pixels instead of whole cells.
+func PixelMouse(w io.Writer, on bool) {
+	if on {
+		io.WriteString(w, "\x1b[?1016h")
+	} else {
+		io.WriteString(w, "\x1b[?1016l")
+	}
+}
+
 // DeleteImages frees every image this program uploaded.
 func DeleteImages(w io.Writer) { io.WriteString(w, "\x1b_Ga=d,d=A,q=2\x1b\\") }

@@ -41,8 +41,9 @@ type levelMap struct {
 	lower  bool
 	w, h   int
 	view   radar.Box
-	ox, oy int // raster's top-left cell inside the map block
-	sx, sy int // ... and on screen, for mouse hits
+	opts   radar.Opts // markers to draw this frame
+	ox, oy int        // raster's top-left cell inside the map block
+	sx, sy int        // ... and on screen, for mouse hits
 	r      *radar.Raster
 	base   *radar.Base
 }
@@ -73,7 +74,8 @@ type matchModel struct {
 	settling  bool                        // camera still moving to the last shot
 	// kitty graphics: images go to out (nil: draw the map in half blocks)
 	out      io.Writer
-	uploaded string  // map whose radar images the terminal holds
+	uploaded string // map whose radar images the terminal holds
+	sprites  spriteLayer
 	camX     float64 // camera centre, 1024 radar space
 	camY     float64
 	w, h     int
@@ -266,12 +268,20 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 	}
 	var boxes []string
 	for i, lv := range m.levels {
-		lines := radar.Draw(lv.r, lv.base, m.st, radar.Opts{
+		lv.opts = radar.Opts{
 			Kills: m.kills, Nums: nums, Now: time.Now(), Lower: lv.lower,
 			LowerBelow: a.Overview.LowerBelow, Sites: radar.SitesOn(a.Map, lv.lower, a.Overview.Sites),
 			ImageUnder: m.images(),
 			Names:      m.zoom >= namesFrom,
-		})
+		}
+		var lines []string
+		if m.images() { // map and markers are terminal images: the text is blank
+			for y := 0; y < lv.base.CH; y++ {
+				lines = append(lines, strings.Repeat(" ", lv.base.CW))
+			}
+		} else {
+			lines = radar.Draw(lv.r, lv.base, m.st, lv.opts)
+		}
 		if titleRows > 0 {
 			name := " upper"
 			if lv.lower {

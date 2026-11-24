@@ -8,6 +8,7 @@ import (
 
 	"github.com/dormonbear/gotv-tui/internal/director"
 	"github.com/dormonbear/gotv-tui/internal/radar"
+	"github.com/dormonbear/gotv-tui/internal/term"
 )
 
 const (
@@ -70,7 +71,7 @@ func (m *matchModel) step() tea.Cmd {
 
 // panCells moves the view by (dx, dy) screen cells, the other way: the map follows
 // the pointer. It stops a running zoom so the two don't fight.
-func (m *matchModel) panCells(dx, dy int) {
+func (m *matchModel) panCells(dx, dy float64) {
 	if len(m.levels) == 0 {
 		return
 	}
@@ -78,20 +79,32 @@ func (m *matchModel) panCells(dx, dy int) {
 	x0, y0 := r.RadarAt(0, 0)
 	x1, y1 := r.RadarAt(2, 4) // one cell
 	m.zoomTo, m.moving = m.zoom, false
-	m.camX -= float64(dx) * (x1 - x0)
-	m.camY -= float64(dy) * (y1 - y0)
+	m.camX -= dx * (x1 - x0)
+	m.camY -= dy * (y1 - y0)
 }
 
-// radarAt is the radar point under screen cell (x, y), if it is on a map.
-func (m *matchModel) radarAt(x, y int) (float64, float64, bool) {
+// radarAt is the radar point under screen position (x, y) in cells, if it is on a
+// map. Whole numbers are a cell's top-left, so callers with cell-only mouse
+// positions add 0.5 to aim at the middle.
+func (m *matchModel) radarAt(x, y float64) (float64, float64, bool) {
 	for _, lv := range m.levels {
-		cx, cy := x-lv.sx, y-lv.sy
-		if cx >= 0 && cy >= 0 && cx < lv.base.CW && cy < lv.base.CH {
-			ax, ay := lv.r.RadarAt(float64(cx*2+1), float64(cy*4+2)) // middle of the cell
+		cx, cy := x-float64(lv.sx), y-float64(lv.sy)
+		if cx >= 0 && cy >= 0 && cx < float64(lv.base.CW) && cy < float64(lv.base.CH) {
+			ax, ay := lv.r.RadarAt(cx*2, cy*4) // 2x4 braille dots per cell
 			return ax, ay, true
 		}
 	}
 	return 0, 0, false
+}
+
+// pointer is the mouse position in cells: exact when the terminal reports pixels
+// (SGR-pixel mode, on with images), else the middle of the reported cell.
+func (m *matchModel) pointer(e tea.MouseMsg) (float64, float64) {
+	if m.out != nil {
+		cw, ch := term.CellPixels()
+		return float64(e.X) / float64(cw), float64(e.Y) / float64(ch)
+	}
+	return float64(e.X) + 0.5, float64(e.Y) + 0.5
 }
 
 func (m *matchModel) cameraKey(k string) tea.Cmd {
@@ -126,7 +139,7 @@ func (m *matchModel) cameraKey(k string) tea.Cmd {
 // drag pans so the radar point grabbed stays under the pointer.
 type drag struct {
 	on   bool
-	x, y int // last pointer cell
+	x, y float64 // last pointer position, in cells
 }
 
 func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
@@ -138,16 +151,18 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 	}
 	switch {
 	case e.Button == tea.MouseButtonLeft && e.Action == tea.MouseActionPress:
-		if _, _, ok := m.radarAt(e.X, e.Y); ok {
-			m.drag = drag{on: true, x: e.X, y: e.Y}
+		x, y := m.pointer(e)
+		if _, _, ok := m.radarAt(x, y); ok {
+			m.drag = drag{on: true, x: x, y: y}
 		}
 		return nil
 	case e.Action == tea.MouseActionRelease:
 		m.drag.on = false
 		return nil
 	case e.Action == tea.MouseActionMotion && m.drag.on:
-		m.panCells(e.X-m.drag.x, e.Y-m.drag.y)
-		m.drag.x, m.drag.y = e.X, e.Y
+		x, y := m.pointer(e)
+		m.panCells(x-m.drag.x, y-m.drag.y)
+		m.drag.x, m.drag.y = x, y
 		return nil
 	case e.Action != tea.MouseActionPress:
 		return nil
@@ -161,7 +176,7 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 	default:
 		return nil
 	}
-	ax, ay, ok := m.radarAt(e.X, e.Y)
+	ax, ay, ok := m.radarAt(m.pointer(e))
 	if !ok { // off the map: zoom around the middle
 		ax, ay = m.camera().Center()
 	}

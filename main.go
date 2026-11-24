@@ -62,6 +62,7 @@ func main() {
 	_, err := tea.NewProgram(ui.New(url, images), opts...).Run()
 	if images != nil {
 		term.DeleteImages(images)
+		term.PixelMouse(images, false)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

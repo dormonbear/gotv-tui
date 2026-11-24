@@ -39,7 +39,10 @@ func (m *matchModel) placeImages() {
 		}
 		m.uploaded = m.assets.Map
 	}
+	cw, ch := term.CellPixels()
+	var areas []mapArea
 	for i, lv := range m.levels {
+		areas = append(areas, mapArea{lv.sx, lv.sy, lv.base.CW, lv.base.CH, radar.Sprites(lv.r, cw, ch, m.st, lv.opts)})
 		img := m.assets.Upper
 		if lv.lower {
 			img = m.assets.Lower
@@ -49,6 +52,7 @@ func (m *matchModel) placeImages() {
 		src := term.Rect{X: r(lv.view.X * kx), Y: r(lv.view.Y * ky), W: max(1, r(lv.view.W*kx)), H: max(1, r(lv.view.H*ky))}
 		term.PlaceImage(m.out, imageID+uint32(i), lv.sx, lv.sy, lv.base.CW, lv.base.CH, src)
 	}
+	m.sprites.frame(m.out, areas, cw, ch)
 }
 
 // hideImages takes the radar images off screen (keeping them uploaded).
@@ -59,4 +63,5 @@ func (m *matchModel) hideImages() {
 	for i := 0; i < 2; i++ {
 		term.HideImage(m.out, imageID+uint32(i))
 	}
+	m.sprites.hide(m.out)
 }
