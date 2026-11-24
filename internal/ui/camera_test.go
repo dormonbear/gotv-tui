@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/dormonbear/gotv-tui/internal/director"
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/radar"
 )
@@ -113,5 +114,42 @@ func dragOn(t *testing.T, lower bool) {
 	m.mouse(tea.MouseMsg{X: x + 30, Y: y, Button: tea.MouseButtonNone, Action: tea.MouseActionMotion})
 	if m.drag.on {
 		t.Fatal("still dragging after release")
+	}
+}
+
+func TestDirectorCameraFollowsTheShot(t *testing.T) {
+	m := testMatch(false)
+	m.view()
+	m.toggleDirector()
+	m.shot = &director.Shot{X: 300, Y: -400, Radius: 700} // radar (300, 400), 1400 px wide
+	for i := 0; i < 120; i++ {
+		m.follow()
+	}
+	near := func(a, b radar.Box) bool {
+		tol := 0.02 * b.W // the camera settles within ~1% of the shot
+		return math.Abs(a.X-b.X) < tol && math.Abs(a.Y-b.Y) < tol && math.Abs(a.W-b.W) < tol && math.Abs(a.H-b.H) < tol
+	}
+	// 1400 px is more than the 800 px map: the shot needs the whole map
+	if tx, ty, tz := m.shotTarget(); tz != 1 || !near(m.camera(), m.box.View(tx, ty, tz)) {
+		t.Fatalf("view %+v, want the whole map", m.camera())
+	}
+	m.shot = &director.Shot{X: 300, Y: -400, Radius: 120} // 240 px wide: ~3.3x on (300, 400)
+	for i := 0; i < 120; i++ {
+		m.follow()
+	}
+	if tx, ty, tz := m.shotTarget(); tz < 3.3 || !near(m.camera(), m.box.View(tx, ty, tz)) {
+		t.Fatalf("view %+v x%.2f, want %+v", m.camera(), m.zoom, m.box.View(tx, ty, tz))
+	}
+	x, y := m.camX, m.camY
+	m.shot.X += 10 // small move: inside the dead zone, the camera holds
+	for i := 0; i < 30; i++ {
+		m.follow()
+	}
+	if m.camX != x || m.camY != y {
+		t.Fatalf("camera chased a small move: (%.2f,%.2f) -> (%.2f,%.2f)", x, y, m.camX, m.camY)
+	}
+	m.cameraKey("left")
+	if m.directing {
+		t.Fatal("manual input should end directing")
 	}
 }

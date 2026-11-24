@@ -20,6 +20,9 @@ import (
 const (
 	sampleTicks = 4 // 16 samples/s at 64 tick
 	playEvery   = time.Second / 16
+	// Lookahead is how far ahead of the screen the parser runs. The director uses it
+	// to see a fight coming (like Valve's HLTV director, which reads 8 s ahead).
+	Lookahead = 4.0
 )
 
 // Handlers receive everything on the playback goroutine.
@@ -27,6 +30,9 @@ type Handlers struct {
 	State  func(State)
 	Event  func(Event)
 	Status func(string)
+	// Ahead gets the events due in the next Lookahead seconds and the latest
+	// queued state in that window, after every playback step.
+	Ahead func(soon []playback.Soon[Event], future *State)
 }
 
 func sideOf(t common.Team) Side {
@@ -96,7 +102,7 @@ func stream(ctx context.Context, url string, s *feeds.Sync, h Handlers) error {
 	if tps <= 0 {
 		tps = 64
 	}
-	pb := playback.New[State, Event](tps, 1.5, 5)
+	pb := playback.New[State, Event](tps, Lookahead, Lookahead+4)
 	gs := p.GameState()
 	tick := func() int { return gs.IngameTick() }
 	emit := func(e Event) { pb.PushEvent(tick(), e) }
@@ -156,6 +162,9 @@ func stream(ctx context.Context, url string, s *feeds.Sync, h Handlers) error {
 				}
 				if frame != nil {
 					h.State(*frame)
+				}
+				if h.Ahead != nil {
+					h.Ahead(pb.Ahead(Lookahead))
 				}
 			}
 		}

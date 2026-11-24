@@ -32,3 +32,20 @@ func TestBurstIsReleasedSmoothly(t *testing.T) {
 	pb.PushFrame(1004, 1004)
 	step(312.5, -1, nil) // play ~908: 1000 not due yet
 }
+
+func TestAheadPeeksAtTheQueue(t *testing.T) {
+	pb := New[int, string](64, 4, 8)
+	for tick := 0; tick <= 512; tick += 4 {
+		pb.PushFrame(tick, tick)
+	}
+	pb.PushEvent(300, "kill")
+	pb.PushEvent(500, "plant")
+	pb.Step(0) // play = 512 - 256 = 256
+	ev, f := pb.Ahead(1)
+	if len(ev) != 1 || ev[0].E != "kill" || ev[0].In != 44.0/64 || f == nil || *f != 320 {
+		t.Fatalf("Ahead(1) = %+v %v", ev, *f)
+	}
+	if ev, _ := pb.Ahead(4); len(ev) != 2 {
+		t.Fatalf("Ahead(4) = %+v", ev)
+	}
+}

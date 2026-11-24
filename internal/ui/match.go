@@ -11,7 +11,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/dormonbear/gotv-tui/internal/director"
 	"github.com/dormonbear/gotv-tui/internal/gotv"
+	"github.com/dormonbear/gotv-tui/internal/playback"
 	"github.com/dormonbear/gotv-tui/internal/radar"
 	"github.com/dormonbear/gotv-tui/internal/term"
 )
@@ -23,6 +25,7 @@ const (
 
 type (
 	stateMsg  gotv.State
+	aheadMsg  []playback.Soon[gotv.Event]
 	eventMsg  gotv.Event
 	statusMsg string
 	radarMsg  struct {
@@ -61,9 +64,15 @@ type matchModel struct {
 	anchor  anchor  // radar point held still while zooming
 	moving  bool    // zoom animation running
 	drag    drag
-	camX    float64 // camera centre, 1024 radar space
-	camY    float64
-	w, h    int
+	// director: picks the shot; the camera follows it while directing
+	dir       *director.Director
+	directing bool
+	shot      *director.Shot
+	soon      []playback.Soon[gotv.Event] // events queued ahead of the screen
+	settling  bool                        // camera still moving to the last shot
+	camX      float64                     // camera centre, 1024 radar space
+	camY      float64
+	w, h      int
 }
 
 func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
@@ -86,6 +95,9 @@ func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
 		State:  func(s gotv.State) { send(stateMsg(s), true) },
 		Event:  func(e gotv.Event) { send(eventMsg(e), false) },
 		Status: func(s string) { send(statusMsg(s), false) },
+		Ahead: func(soon []playback.Soon[gotv.Event], _ *gotv.State) {
+			send(aheadMsg(soon), true)
+		},
 	})
 	return m, tea.Batch(m.wait(), tick())
 }
@@ -120,6 +132,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	case stateMsg:
 		s := gotv.State(msg)
 		m.st = &s
+		m.direct()
 		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" {
 			m.loading = s.Map
 			return tea.Batch(m.wait(), loadRadar(s.Map))
@@ -146,7 +159,13 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		return m.cameraKey(msg.String())
 	case tea.MouseMsg:
 		return m.mouse(msg)
+	case aheadMsg:
+		m.soon = msg
+		return m.wait()
 	case animMsg:
+		if m.directing {
+			return m.follow()
+		}
 		return m.step()
 	}
 	return nil
@@ -308,6 +327,13 @@ func (m *matchModel) view() string {
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
+	dir := " d director ·"
+	if m.directing {
+		dir = " director: whole map ·"
+		if m.shot != nil {
+			dir = " director: " + m.shot.Reason + " ·"
+		}
+	}
+	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources ·%s wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", dir, zoom, m.status), m.w, ""))
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftBlock, " ", mapBlock) + "\n" + footer
 }
