@@ -125,7 +125,7 @@ func Sprites(r *Raster, cellW, cellH int, st *gotv.State, o Opts) []Use {
 		px, py := r.ToPx(v.X, v.Y)
 		return int(math.Floor(px / 2)), int(math.Floor(py / 4))
 	}
-	labels := playerLabels(st.Players, o, here, toCell, CW)
+	labels := playerLabels(st.Players, o, here, toCell, CW, maxName)
 	for _, pl := range st.Players {
 		if !pl.Alive || pl.Pos == nil || !here(*pl.Pos) {
 			continue
