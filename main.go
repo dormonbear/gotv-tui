@@ -27,7 +27,14 @@ usage:
 `
 
 func main() {
-	arg := strings.TrimSpace(strings.Join(os.Args[1:], " "))
+	args, relaunched := os.Args[1:], false
+	for i, a := range args {
+		if a == relaunchedFlag {
+			args, relaunched = append(append([]string{}, args[:i]...), args[i+1:]...), true
+			break
+		}
+	}
+	arg := strings.TrimSpace(strings.Join(args, " "))
 	switch {
 	case arg == "--version" || arg == "-v":
 		fmt.Println(version)
@@ -53,6 +60,12 @@ func main() {
 	}
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion()}
 	gfx := term.DetectGraphics()
+	if gfx == term.Text && !relaunched {
+		if name, ok := relaunch(args); ok {
+			fmt.Printf("gotv-tui opened in %s (this terminal can't show the map as an image).\nSet GOTV_TUI_RELAUNCH=0 to stay here.\n", name)
+			return
+		}
+	}
 	var images *term.LockedFile // images share the TUI's output, one writer at a time
 	if gfx != term.Text {
 		images = term.NewLockedFile(os.Stdout)
