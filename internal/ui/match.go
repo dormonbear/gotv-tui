@@ -111,7 +111,9 @@ func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
 			send(aheadMsg(soon), true)
 		},
 	})
-	return m, tea.Batch(m.wait(), tick())
+	// the director runs by default; any manual camera move takes over
+	m.directing, m.dir, m.moving = true, director.New(), true
+	return m, tea.Batch(m.wait(), tick(), animTick())
 }
 
 func (m *matchModel) wait() tea.Cmd {

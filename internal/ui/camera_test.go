@@ -216,3 +216,10 @@ func TestClickAPlayerToFollowThem(t *testing.T) {
 		t.Fatal("clicking elsewhere on the map should stop following")
 	}
 }
+
+func TestDirectorWaitsForTheMap(t *testing.T) {
+	m := &matchModel{directing: true, moving: true}
+	if m.follow() == nil {
+		t.Fatal("the director loop should keep running until the map loads")
+	}
+}
