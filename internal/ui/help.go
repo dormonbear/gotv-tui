@@ -15,7 +15,7 @@ var helpKeys = [][2]string{
 	{"wheel · + -", "zoom"},
 	{"drag · ← ↑ ↓ → · hjkl", "pan"},
 	{"0", "whole map"},
-	{"v", "audio: play a stream (bili / huya / twitch / URL)"},
+	{"v", "audio: pick Huya / Twitch / Bilibili / URL, then the room (↑/↓: past rooms)"},
 	{"t", "tap sync: press as a kill is called"},
 	{"[ ] · { }", "audio offset ±1 s · ±0.1 s"},
 	{"u", "update, when a new version is out"},

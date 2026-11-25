@@ -242,6 +242,10 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		return m.wait()
 	case soundStatusMsg:
 		m.status = term.Clean(string(msg), 120)
+		if p := m.sound.pending; string(msg) == "audio: playing" && p[1] != "" { // it plays: worth keeping
+			addRoom(p[0], p[1])
+			m.sound.pending = [2]string{}
+		}
 		return m.wait()
 	case statusMsg:
 		m.status = term.Clean(string(msg), 120) // may carry relay-side error text
@@ -568,7 +572,7 @@ func (m *matchModel) view() string {
 	}
 	footer = dim(ansi.Truncate(footer, m.w, ""))
 	if m.sound.typing() {
-		footer = " audio source: " + m.sound.input.View()
+		footer = m.soundFooter()
 	}
 	return screen + "\n" + footer
 }

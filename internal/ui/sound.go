@@ -23,12 +23,35 @@ type sound struct {
 	offset    float64      // seconds
 	dataDelay atomic.Int64 // ms, read by the playback goroutine
 	input     *textinput.Model
-	last      string // last source typed, offered again
+	picking   bool              // choosing the platform, before the input
+	platform  int               // index into platforms
+	last      map[string]string // last room typed per platform, offered again
+	history   []string          // the chosen platform's rooms that played, for ↑/↓
+	histAt    int               // -1: not browsing the history
+	pending   [2]string         // platform and room just started; saved once it plays
+}
+
+// audioChoice is what a match was playing, to restore when the source is reopened.
+type audioChoice struct {
+	typed  string
+	offset float64
+}
+
+// startPlayer starts the audio pipeline (swapped out in tests).
+var startPlayer = audio.Start
+
+// platforms the audio picker offers; prefix is what audio.Source takes before the room.
+var platforms = []struct{ name, prefix, hint string }{
+	{"Huya", "huya", "room number or name, e.g. 123321"},
+	{"Twitch", "twitch", "channel name, e.g. eslcs"},
+	{"Bilibili", "bili", "room number, e.g. 6"},
+	{"URL", "", "a stream or media URL"},
+	{"Off", "", ""},
 }
 
 type soundStatusMsg string
 
-func (s *sound) typing() bool { return s.input != nil }
+func (s *sound) typing() bool { return s.input != nil || s.picking }
 
 // apply splits the offset between the data and the audio.
 func (s *sound) apply() {
@@ -53,13 +76,8 @@ func (m *matchModel) soundKey(k string) (tea.Cmd, bool) {
 	s := &m.sound
 	switch k {
 	case "v":
-		in := textinput.New()
-		in.Placeholder = "stream or media URL, or bili 6 / twitch name (empty: stop)"
-		in.SetValue(s.last)
-		in.CharLimit = 300
-		in.Width = max(20, m.w-24)
-		s.input = &in
-		return in.Focus(), true
+		s.picking = true
+		return nil, true
 	case "[", "]", "{", "}":
 		if s.player == nil {
 			return nil, true
@@ -80,32 +98,46 @@ func (m *matchModel) soundKey(k string) (tea.Cmd, bool) {
 // typeSource feeds a key to the source input.
 func (m *matchModel) typeSource(msg tea.KeyMsg) tea.Cmd {
 	s := &m.sound
+	if s.picking {
+		return m.pickPlatform(msg.String())
+	}
 	switch msg.String() {
 	case "esc":
 		s.input = nil
 		return nil
 	case "enter":
+		p := platforms[s.platform]
 		v := strings.TrimSpace(s.input.Value())
 		s.input = nil
-		s.stop()
 		if v == "" {
-			m.status = "audio off"
 			return nil
 		}
-		src, err := audio.Source(v)
-		if err != nil {
-			m.status = err.Error()
+		s.stop()
+		typed := v
+		if p.prefix != "" {
+			typed = p.prefix + " " + v
+		}
+		if s.last == nil {
+			s.last = map[string]string{}
+		}
+		s.last[p.name] = v
+		m.startAudio(typed, [2]string{p.name, v})
+		return nil
+	case "up", "down":
+		if len(s.history) == 0 {
 			return nil
 		}
-		s.last = v
-		send := m.send
-		p, err := audio.Start(src, func(st string) { send(soundStatusMsg(st), false) })
-		if err != nil {
-			m.status = err.Error()
-			return nil
+		if msg.String() == "up" {
+			s.histAt = min(s.histAt+1, len(s.history)-1)
+		} else {
+			s.histAt = max(s.histAt-1, -1)
 		}
-		s.player, s.src = p, v
-		s.apply()
+		v := ""
+		if s.histAt >= 0 {
+			v = s.history[s.histAt]
+		}
+		s.input.SetValue(v)
+		s.input.CursorEnd()
 		return nil
 	}
 	var cmd tea.Cmd
@@ -146,4 +178,99 @@ func (m *matchModel) soundNote() string {
 		return ""
 	}
 	return fmt.Sprintf(" ♪ %s · offset %+.1fs ([ ] { } t) ·", s.src, s.offset)
+}
+
+// pickPlatform: ←/→ (or the number) choose, enter goes on to the room, esc cancels.
+func (m *matchModel) pickPlatform(k string) tea.Cmd {
+	s := &m.sound
+	switch k {
+	case "left", "h", "shift+tab":
+		s.platform = (s.platform + len(platforms) - 1) % len(platforms)
+	case "right", "l", "tab":
+		s.platform = (s.platform + 1) % len(platforms)
+	case "esc":
+		s.picking = false
+	case "1", "2", "3", "4", "5":
+		s.platform = int(k[0]-'1') % len(platforms)
+		return m.pickPlatform("enter")
+	case "enter":
+		s.picking = false
+		p := platforms[s.platform]
+		if p.name == "Off" {
+			s.stop()
+			m.status = "audio off"
+			return nil
+		}
+		in := textinput.New()
+		in.Placeholder = p.hint
+		s.history, s.histAt = loadRooms()[p.name], -1
+		in.SetValue(s.last[p.name])
+		in.CharLimit = 300
+		in.Width = max(20, m.w-30)
+		s.input = &in
+		return in.Focus()
+	}
+	return nil
+}
+
+// soundFooter is the footer while picking a platform or typing the room.
+func (m *matchModel) soundFooter() string {
+	s := &m.sound
+	if s.picking {
+		var parts []string
+		for i, p := range platforms {
+			label := fmt.Sprintf(" %d %s ", i+1, p.name)
+			if i == s.platform {
+				label = switchOn.Render(label)
+			}
+			parts = append(parts, label)
+		}
+		return " audio from: " + strings.Join(parts, " ") + dim("   ←/→ choose · enter · esc")
+	}
+	p := platforms[s.platform]
+	label := p.name + " room: "
+	if p.prefix == "" {
+		label = "URL: "
+	} else if p.name == "Twitch" {
+		label = "Twitch channel: "
+	}
+	line := " " + label + s.input.View()
+	if len(s.history) > 0 {
+		line += dim("   ↑/↓ history: " + strings.Join(s.history, " · "))
+	}
+	return line
+}
+
+// startAudio plays typed ("huya 123321", a URL, ...); pick is the platform and
+// room to remember once it actually plays.
+func (m *matchModel) startAudio(typed string, pick [2]string) {
+	s := &m.sound
+	s.stop()
+	src, err := audio.Source(typed)
+	if err != nil {
+		m.status = err.Error()
+		return
+	}
+	send := m.send
+	player, err := startPlayer(src, func(st string) { send(soundStatusMsg(st), false) })
+	if err != nil {
+		m.status = err.Error()
+		return
+	}
+	s.player, s.src, s.pending = player, typed, pick
+	s.apply()
+}
+
+// audioChoice is what to restore if this source is opened again.
+func (m *matchModel) audioChoice() *audioChoice {
+	if m.sound.src == "" {
+		return nil
+	}
+	return &audioChoice{m.sound.src, m.sound.offset}
+}
+
+// restoreAudio starts the audio a source had when it was left.
+func (m *matchModel) restoreAudio(c *audioChoice) {
+	m.sound.offset = c.offset
+	m.startAudio(c.typed, [2]string{})
 }
