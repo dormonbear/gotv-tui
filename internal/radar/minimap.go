@@ -237,6 +237,7 @@ type Opts struct {
 	Focus      string // followed player (lowercase): drawn highlighted
 	Boom       *Boom  // a C4 explosion in progress
 	Blasts     []Blast
+	Floor      Floor // players clearly above the ground get a ▴
 }
 
 // Draw overlays the markers on this level over the static base, as ANSI rows.
@@ -403,6 +404,13 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 					cx += w - 1 // facing right: the arrow goes after the name
 				}
 				putCell(cx+dx, cy+dy, glyph{ch: ch, fg: teamColor(pl.Side), bold: true}, false)
+				if o.Floor.Raised(*pl.Pos) {
+					ux, uy := cx-1, cy // left of the label, unless the arrow is there
+					if dx < 0 && dy == 0 {
+						uy--
+					}
+					putCell(ux, uy, glyph{ch: "▴", fg: term.White, bold: true}, false)
+				}
 			}
 		}
 		for _, pl := range st.Players {

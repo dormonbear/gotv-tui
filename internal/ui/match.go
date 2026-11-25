@@ -76,6 +76,7 @@ type matchModel struct {
 	send         func(tea.Msg, bool)
 	kills        []radar.KillMark
 	blasts       []radar.Blast // HE and flash pops this round
+	floor        radar.Floor   // ground height learnt from where players walk
 	status       string
 	assets       *radar.Assets
 	box          radar.Box // the map's own extent
@@ -217,6 +218,10 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		if m.st != nil && (s.Map != m.st.Map || s.Round < m.st.Round-1) {
 			m.rounds = nil // another match
 		}
+		if m.floor == nil || (m.st != nil && s.Map != m.st.Map) {
+			m.floor = radar.Floor{}
+		}
+		m.floor.Observe(s.Players)
 		m.st = &s
 		m.fx.onState(m.st, time.Now())
 		m.direct()
@@ -387,6 +392,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			Focus:      m.focus,
 			Boom:       m.fx.boom(time.Now()),
 			Blasts:     m.blasts,
+			Floor:      m.floor,
 		}
 		var lines []string
 		if m.images() || m.wholeFrames() { // map and markers are terminal images: the text is blank
