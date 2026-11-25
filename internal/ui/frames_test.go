@@ -16,6 +16,7 @@ func TestWholeFramesAreOverlays(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() { f.Close() }) // runs before TempDir's removal; Windows can't delete open files
 		m := testMatch(false)
 		m.out, m.gfx = term.NewLockedFile(f), g
 		m.st = &gotv.State{Players: []gotv.Player{{Name: "a", Side: gotv.T, Alive: true, Pos: &gotv.Vec{X: 500, Y: -500}}}}
