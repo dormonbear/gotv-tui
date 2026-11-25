@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -87,6 +88,7 @@ type matchModel struct {
 	levels       []*levelMap
 	loading      string    // map being loaded
 	retryAt      time.Time // after a failed map download, when to try again
+	noRadar      string    // a map no radar source has: not asked for again
 	aspect       float64   // terminal cell height / width
 	zoom         float64   // camera: 1 = whole map
 	zoomTo       float64   // zoom animates towards this
@@ -229,7 +231,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		m.st = &s
 		m.fx.onState(m.st, time.Now())
 		m.direct()
-		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" && time.Now().After(m.retryAt) {
+		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" && s.Map != m.noRadar && time.Now().After(m.retryAt) {
 			m.loading = s.Map
 			return tea.Batch(m.wait(), m.loadRadar(s.Map))
 		}
@@ -247,6 +249,10 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	case radarMsg:
 		if msg.name != m.loading || (m.st != nil && m.st.Map != msg.name) {
 			return nil // asked for by an earlier match or map
+		}
+		if errors.Is(msg.err, radar.ErrNotFound) {
+			m.loading, m.noRadar = "", msg.name
+			return nil
 		}
 		if msg.err != nil {
 			m.status = "map: " + msg.err.Error()
@@ -354,6 +360,9 @@ var frame = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForegroun
 func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 	a := m.assets
 	if a == nil {
+		if m.st != nil && m.st.Map == m.noRadar {
+			return dim(" no radar for " + feeds.MapName(m.noRadar) + " yet · scoreboard and log still update")
+		}
 		return dim(" loading map...")
 	}
 	want := []bool{false}

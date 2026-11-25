@@ -1,12 +1,16 @@
 package ui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dormonbear/gotv-tui/internal/gotv"
+	"github.com/dormonbear/gotv-tui/internal/radar"
 )
 
 func TestWaitingAnimates(t *testing.T) {
@@ -32,5 +36,16 @@ func TestBlastsAreMapOnly(t *testing.T) {
 	m.applyEvent(gotv.Event{Kind: gotv.EvRoundStart, Round: 2}, now)
 	if len(m.blasts) != 0 {
 		t.Fatal("a new round clears the blasts")
+	}
+}
+
+func TestMissingRadar(t *testing.T) {
+	m := &matchModel{loading: "de_nowhere", st: &gotv.State{Map: "de_nowhere"}}
+	m.update(radarMsg{name: "de_nowhere", err: fmt.Errorf("radar de_nowhere: %w", radar.ErrNotFound)})
+	if m.noRadar != "de_nowhere" || !m.retryAt.IsZero() {
+		t.Fatal("a radar no source has isn't retried")
+	}
+	if v := ansi.Strip(m.mapView(60, 20, nil)); !strings.Contains(v, "no radar for") {
+		t.Fatalf("map area says %q", v)
 	}
 }
