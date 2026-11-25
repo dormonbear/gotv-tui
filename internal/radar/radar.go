@@ -85,7 +85,8 @@ type Assets struct {
 	Lower    *image.NRGBA // nil for single-level maps
 }
 
-var errNotFound = fmt.Errorf("not found")
+// ErrNotFound: no source has this map.
+var ErrNotFound = fmt.Errorf("not found")
 
 var client = &http.Client{Timeout: 20 * time.Second}
 
@@ -108,7 +109,7 @@ func cached(name string) ([]byte, error) {
 	var b []byte
 	for _, url := range sources(name) {
 		got, err := fetch(url)
-		if err == errNotFound {
+		if err == ErrNotFound {
 			continue
 		}
 		if err != nil {
@@ -121,7 +122,7 @@ func cached(name string) ([]byte, error) {
 		break
 	}
 	if b == nil {
-		return nil, errNotFound
+		return nil, ErrNotFound
 	}
 	_ = os.MkdirAll(filepath.Dir(file), 0o755)
 	if tmp := file + ".tmp"; os.WriteFile(tmp, b, 0o644) == nil { // whole file or nothing
@@ -162,7 +163,7 @@ func fetch(url string) ([]byte, error) {
 	}
 	defer r.Body.Close()
 	if r.StatusCode == http.StatusNotFound {
-		return nil, errNotFound
+		return nil, ErrNotFound
 	}
 	if r.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("radar: HTTP %s from %s", r.Status, url)
@@ -203,7 +204,7 @@ func Load(mapName string) (*Assets, error) {
 		if a.Lower, err = decode(lo); err != nil {
 			return nil, err
 		}
-	} else if err != errNotFound {
+	} else if err != ErrNotFound {
 		return nil, err
 	}
 	return a, nil
