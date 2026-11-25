@@ -12,12 +12,12 @@ func TestHistoryLine(t *testing.T) {
 	m.recordRound(13, gotv.Event{Winner: gotv.T, Reason: "Bomb exploded"})
 	m.recordRound(14, gotv.Event{Winner: gotv.CT, Reason: "Enemy eliminated"})
 	m.recordRound(14, gotv.Event{Winner: gotv.CT, Reason: "Bomb defused"}) // replaced, not added
-	got := plain(historyLine(m.rounds, 15, 80))
+	got := plain(historyLine(nil, m.rounds, 15, 80))
 	// rounds 1-12 happened before we connected; a gap at halftime
 	if want := " rounds ------------ ✱✓"; got != want {
 		t.Fatalf("%q, want %q", got, want)
 	}
-	if historyLine(nil, 1, 80) != "" {
+	if historyLine(nil, nil, 1, 80) != "" {
 		t.Fatal("nothing to show in round 1")
 	}
 }
@@ -54,8 +54,16 @@ func TestRoundsResetOnANewMatch(t *testing.T) {
 func TestHistoryKeepsNewestWhenNarrow(t *testing.T) {
 	m := &matchModel{}
 	m.recordRound(20, gotv.Event{Winner: gotv.T, Reason: "Bomb exploded"})
-	got := plain(historyLine(m.rounds, 21, 16)) // room for 8 cells after the label
+	got := plain(historyLine(nil, m.rounds, 21, 16)) // room for 8 cells after the label
 	if !strings.HasSuffix(got, "✱") || len([]rune(got)) > 16 {
 		t.Fatalf("%q: the newest round must stay visible", got)
+	}
+}
+
+func TestHistoryFromRulesAndLive(t *testing.T) {
+	known := []gotv.Outcome{{Winner: gotv.CT, Reason: "Enemy eliminated"}, {Winner: gotv.T, Reason: "Bomb exploded"}, {}} // round 3: unknown code
+	live := []roundResult{{4, gotv.CT, "Bomb defused"}}                                                                   // seen live after the rules' copy
+	if got := plain(historyLine(known, live, 5, 80)); got != " rounds ✕✱-✓" {
+		t.Fatalf("%q", got)
 	}
 }

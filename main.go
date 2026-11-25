@@ -4,6 +4,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -28,6 +30,7 @@ usage:
   gotv-tui 'playcast "<url>"'   same, pasted from a tournament page
   gotv-tui record <url> [dir]   watch a relay and save it to dir (default gotv-<time>)
   gotv-tui replay <dir>         watch a saved recording, paced as it was broadcast
+  gotv-tui demo <file.dem> [x]  play a demo file, at x times real time (default 1)
   gotv-tui update               update the binary to the latest release
   gotv-tui --version
 `
@@ -42,6 +45,7 @@ func main() {
 	}
 	arg := strings.TrimSpace(strings.Join(args, " "))
 	var rec *record.Recorder
+	demo := "" // a .dem file to play instead of a relay
 	switch {
 	case arg == "--version" || arg == "-v":
 		fmt.Println(version)
@@ -77,6 +81,23 @@ func main() {
 		}
 		defer stop()
 		arg = url
+	case (len(args) == 2 || len(args) == 3) && args[0] == "demo":
+		abs, err := filepath.Abs(args[1])
+		if err == nil {
+			_, err = os.Stat(abs)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "demo:", err)
+			os.Exit(1)
+		}
+		demo = ui.DemoPrefix + abs
+		if len(args) == 3 {
+			if x, err := strconv.ParseFloat(args[2], 64); err != nil || x <= 0 || x > 64 {
+				fmt.Fprintln(os.Stderr, "demo: speed must be a number between 0 and 64")
+				os.Exit(1)
+			}
+			demo += "@" + args[2]
+		}
 	case arg == "--help" || arg == "-h":
 		fmt.Printf(usage, version)
 		return
@@ -84,8 +105,8 @@ func main() {
 		fmt.Printf(usage, version)
 		os.Exit(1)
 	}
-	url := ""
-	if arg != "" {
+	url := demo
+	if url == "" && arg != "" {
 		url = feeds.NormalizeURL(arg)
 	}
 	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion()}

@@ -38,10 +38,17 @@ var reasonGlyph = map[string]string{
 }
 
 // historyLine is one glyph per round, coloured by the winning side: ✕ elimination,
-// ✱ bomb, ✓ defuse, ~ time. Rounds before we connected show as "-". A gap marks
+// ✱ bomb, ✓ defuse, ~ time. Outcomes come from the game rules (known) and from round
+// ends seen live (rs, which also cover overtime past the rules' 30 rounds); a round
+// with neither shows as "-". A gap marks
 // halftime (after 12) and each overtime half (every 3 after 24).
-func historyLine(rs []roundResult, current, width int) string {
+func historyLine(known []gotv.Outcome, rs []roundResult, current, width int) string {
 	byN := map[int]roundResult{}
+	for i, o := range known { // from the game rules: covers rounds before we connected
+		if o.Winner != "" {
+			byN[i+1] = roundResult{i + 1, o.Winner, o.Reason}
+		}
+	}
 	last := current - 1
 	for _, r := range rs {
 		byN[r.n] = r

@@ -31,6 +31,7 @@ No game client, no account, no scraping: one ~4 MB binary for macOS, Linux and W
 - **Adapts to the window**: side by side on a wide terminal, stacked on a narrow one
   or a phone, with a compact scoreboard when space is tight.
 - **Record and replay** a match: `gotv-tui record <url>`, `gotv-tui replay <dir>`.
+- **Play demo files** (`.dem`), at any speed: `gotv-tui demo <file> [x]`.
 - **Self-updating**: `gotv-tui update`.
 
 ## Install
@@ -71,6 +72,7 @@ gotv-tui https://cstv.fragnet.net/a       # open a relay directly
 gotv-tui 'playcast "https://cstv.fragnet.net/a"'   # pasted as published
 gotv-tui record https://cstv.fragnet.net/a   # watch and save to ./gotv-<time>/
 gotv-tui replay gotv-20261125-190000        # watch a saved match later
+gotv-tui demo match.dem 4                   # play a demo file, here at 4x speed
 gotv-tui --version
 ```
 

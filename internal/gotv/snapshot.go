@@ -25,6 +25,31 @@ func prop(e *st.Entity, name string) (st.PropertyValue, bool) {
 	return v, ok && v.Any != nil
 }
 
+// roundCodes are m_iMatchStats_RoundResults values, verified against the parsed
+// round ends of four CS2 matches (0 = not played).
+var roundCodes = map[int]Outcome{
+	1: {CT, "Enemy eliminated"}, 3: {CT, "Bomb defused"}, 4: {CT, "Time ran out"},
+	5: {T, "Enemy eliminated"}, 6: {T, "Bomb exploded"},
+}
+
+// history reads the finished rounds' outcomes; an unknown code ends it (shown as
+// unknown rounds by the UI rather than guessed).
+func history(rules *st.Entity, played int) []Outcome {
+	var out []Outcome
+	for i := 0; i < min(played, 30); i++ {
+		v, ok := prop(rules, fmt.Sprintf("m_pGameRules.m_iMatchStats_RoundResults.%04d", i))
+		if !ok {
+			break
+		}
+		o, known := roundCodes[v.Int()]
+		if !known {
+			o = Outcome{}
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
 // roundStats sums the per-round stats of the rounds played (some servers leave the
 // m_matchStats totals at 0; the per-round ones are always filled) and returns ADR.
 func roundStats(pl *common.Player, rounds int) (float64, Stats) {
@@ -134,6 +159,7 @@ func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
 	}
 
 	if rules := gs.Rules(); rules != nil {
+		s.History = history(rules.Entity(), played)
 		e := rules.Entity()
 		if v, ok := prop(e, "m_pGameRules.m_bGamePaused"); ok {
 			s.Paused = v.BoolVal()
