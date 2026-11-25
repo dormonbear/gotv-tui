@@ -72,6 +72,7 @@ type matchModel struct {
 	rounds       []roundResult // results seen since connecting
 	notice       string        // app-wide notice (update available) for the footer
 	link         link          // connection state, for the footer badge
+	help         bool          // the key help is open
 	lastData     time.Time     // when the last snapshot arrived
 	stats        bool          // scoreboard shows match stats instead of the live state
 	directBefore bool          // the director had the camera when the current follow began
@@ -269,6 +270,10 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	case tea.KeyMsg:
 		if m.sound.typing() {
 			return m.typeSource(msg)
+		}
+		if k := msg.String(); k == "?" || m.help { // ? toggles the key help; any key closes it
+			m.help = k == "?" && !m.help
+			return nil
 		}
 		if cmd, ok := m.soundKey(msg.String()); ok {
 			return cmd
@@ -536,15 +541,20 @@ func (m *matchModel) view() string {
 	for _, lv := range m.levels {
 		lv.sx, lv.sy = mapX+lv.ox, mapY+lv.oy
 	}
-	if m.gfx == term.Kitty {
-		m.placeImages()
+	if m.help { // the help covers the screen: no map images over it
+		m.hideImages()
+		screen = lipgloss.Place(m.w, m.h-1, lipgloss.Center, lipgloss.Center, helpBox())
+	} else {
+		if m.gfx == term.Kitty {
+			m.placeImages()
+		}
+		m.sendFrames()
 	}
-	m.sendFrames()
 	zoom := ""
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	footer := fmt.Sprintf("%s q quit · b/esc sources · s stats · v audio · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s%s", m.soundNote(), zoom, m.status, delayNote(m.url))
+	footer := fmt.Sprintf("%s ? keys · q quit · b back · s stats · d director ·%s %s%s", m.soundNote(), zoom, m.status, delayNote(m.url))
 	if m.notice != "" { // first, so a narrow footer keeps it
 		footer = " " + m.notice + " ·" + footer
 	}
