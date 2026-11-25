@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
 	"github.com/dormonbear/gotv-tui/internal/gotv"
@@ -59,7 +58,7 @@ type listModel struct {
 	saveErr       string
 	spin          spinner.Model
 	gen           int // refresh loop generation
-	w             int
+	w, h          int
 }
 
 var stateColor = map[feeds.State]lipgloss.Color{feeds.Live: "2", feeds.Stale: "3", feeds.Waiting: "6", feeds.Offline: "8"}
@@ -246,71 +245,6 @@ var (
 	red     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	yellow  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 )
-
-func (m *listModel) view() string {
-	var b strings.Builder
-	probing := false
-	for _, f := range m.feeds {
-		if _, ok := m.status[f.URL]; !ok {
-			probing = true
-		}
-	}
-	b.WriteString(bold("CSTV / GOTV sources"))
-	if probing {
-		b.WriteString(" " + m.spin.View() + lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(" refreshing"))
-	}
-	b.WriteString("\n")
-	if len(m.feeds) == 0 {
-		b.WriteString(dim("No sources. Press a to add one.") + "\n")
-	}
-	for i, f := range m.feeds {
-		state := m.spin.View() + lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(" probing")
-		if s, ok := m.status[f.URL]; ok {
-			text := string(s.State) + " · " + feeds.MapName(s.Map) + matchText(m.match[f.URL])
-			switch s.State {
-			case feeds.Offline:
-				text = "offline"
-			case feeds.Waiting:
-				text = "waiting for broadcast"
-			}
-			state = lipgloss.NewStyle().Foreground(stateColor[s.State]).Render(text)
-		}
-		name := " " + f.Name + "  "
-		if i == m.sel && m.form == nil {
-			name = inverse.Render(name)
-		}
-		b.WriteString(ansi.Truncate(name+state+dim("  "+f.URL), max(20, m.w), "") + "\n")
-	}
-	if f := m.form; f != nil {
-		head := "Edit source"
-		if f.index < 0 {
-			head = "Add source"
-		}
-		cur := func(on bool) string {
-			if on {
-				return "› "
-			}
-			return "  "
-		}
-		body := bold(head) + "\n" + cur(!f.onURL) + "Name: " + f.name.View() + "\n" + cur(f.onURL) + "URL:  " + f.url.View()
-		if f.err != "" {
-			body += "\n" + red.Render(f.err)
-		}
-		body += "\n" + dim("enter next/save · tab switch field · esc cancel")
-		b.WriteString(box.Render(body) + "\n")
-	}
-	if m.confirmDelete && m.sel < len(m.feeds) {
-		b.WriteString(yellow.Render(fmt.Sprintf("Delete %q? y to confirm, any other key cancels", m.feeds[m.sel].Name)) + "\n")
-	}
-	if m.saveErr != "" {
-		b.WriteString(red.Render(m.saveErr) + "\n")
-	}
-	if m.form == nil {
-		b.WriteString(dim("↑/↓ select · enter open · a add · e edit · d delete · r refresh (auto 30s) · q quit") + "\n")
-	}
-	b.WriteString(dim("sources saved in " + m.file))
-	return b.String()
-}
 
 // matchText is " · CT 11 : 5 T · R17" (or "· ended ..."), "" until peeked.
 func matchText(s *gotv.Summary) string {

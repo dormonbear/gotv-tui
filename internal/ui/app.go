@@ -117,7 +117,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.match.aspect = term.CellAspect() // font or zoom may have changed
 		}
 		if a.list != nil {
-			a.list.w = a.w
+			a.list.w, a.list.h = a.w, a.h
 		}
 		return a, nil
 	case matchMsg:
@@ -172,7 +172,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.list == nil {
 					var cmd tea.Cmd
 					a.list, cmd = newList(feeds.File())
-					a.list.w = a.w
+					a.list.w, a.list.h = a.w, a.h
 					return a, cmd
 				}
 				return a, a.list.resume() // states change while a match is open
@@ -225,7 +225,7 @@ func (a *App) View() string {
 		return a.match.view()
 	}
 	if a.list != nil {
-		return a.list.view() + "\n" + a.versionLine()
+		return a.list.view(a.versionLine())
 	}
 	return ""
 }

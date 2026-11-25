@@ -14,6 +14,7 @@ func TestUpdateNoticeAndKey(t *testing.T) {
 	a := New("", nil, 0)
 	a.Version = "0.1.0"
 	a.list, _ = newList(filepath.Join(t.TempDir(), "feeds.json"))
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	if _, cmd := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")}); cmd != nil && a.updating {
 		t.Fatal("u updated with no newer release known")
 	}
@@ -67,6 +68,7 @@ func TestVersionLineStates(t *testing.T) {
 	a := New("", nil, 0)
 	a.Version = "0.20.0"
 	a.list, _ = newList(filepath.Join(t.TempDir(), "feeds.json"))
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	a.Update(latestMsg{})
 	if !strings.Contains(plain(a.View()), "v0.20.0 · up to date") {
 		t.Fatal("no 'up to date' when the check found nothing newer")
