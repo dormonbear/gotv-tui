@@ -98,14 +98,14 @@ var relayClient = &http.Client{Timeout: 30 * time.Second, Transport: capped{http
 
 const maxFragment = 64 << 20
 
-// RecordTo also saves every relay fragment fetched from now on under dir.
-func RecordTo(dir string) error {
-	rt, err := record.Transport(dir, relayClient.Transport)
+// RecordTo also saves the fragments of the first relay fetched from now on under dir.
+func RecordTo(dir string) (*record.Recorder, error) {
+	rec, err := record.Transport(dir, relayClient.Transport)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	relayClient.Transport = rt
-	return nil
+	relayClient.Transport = rec
+	return rec, nil
 }
 
 type capped struct{ rt http.RoundTripper }

@@ -134,7 +134,7 @@ func (m *matchModel) wait() tea.Cmd {
 	return func() tea.Msg {
 		select {
 		case msg := <-ch:
-			return msg
+			return matchMsg{m, msg}
 		case <-ctx.Done():
 			return nil
 		}
@@ -176,17 +176,17 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		m.direct()
 		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" && time.Now().After(m.retryAt) {
 			m.loading = s.Map
-			return tea.Batch(m.wait(), loadRadar(s.Map))
+			return tea.Batch(m.wait(), m.loadRadar(s.Map))
 		}
 		return m.wait()
 	case eventMsg:
 		m.applyEvent(gotv.Event(msg), time.Now())
 		return m.wait()
 	case statusMsg:
-		m.status = string(msg)
+		m.status = term.Clean(string(msg), 120) // may carry relay-side error text
 		return m.wait()
 	case radarMsg:
-		if msg.name != m.loading {
+		if msg.name != m.loading || (m.st != nil && m.st.Map != msg.name) {
 			return nil // asked for by an earlier match or map
 		}
 		if msg.err != nil {
@@ -220,11 +220,18 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func loadRadar(name string) tea.Cmd {
+func (m *matchModel) loadRadar(name string) tea.Cmd {
 	return func() tea.Msg {
 		a, err := radar.Load(name)
-		return radarMsg{name, a, err}
+		return matchMsg{m, radarMsg{name, a, err}}
 	}
+}
+
+// matchMsg is a message from one match's background work; the app drops it when
+// that match is no longer the open one.
+type matchMsg struct {
+	m   *matchModel
+	msg tea.Msg
 }
 
 func mmss(s float64) string {
@@ -388,6 +395,9 @@ func (m *matchModel) panel(nums map[string]int, compact bool) []string {
 
 // logLines is the game log title and up to n-1 newest events.
 func (m *matchModel) logLines(n int) []string {
+	if n <= 0 { // no room left under the scoreboard
+		return nil
+	}
 	lines := []string{bold("Game log")}
 	if len(m.log) == 0 {
 		lines = append(lines, dim("events appear from the moment you connect"))

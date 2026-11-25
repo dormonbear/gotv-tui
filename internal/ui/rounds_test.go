@@ -50,3 +50,12 @@ func TestRoundsResetOnANewMatch(t *testing.T) {
 		t.Fatal("kept the previous match's rounds")
 	}
 }
+
+func TestHistoryKeepsNewestWhenNarrow(t *testing.T) {
+	m := &matchModel{}
+	m.recordRound(20, gotv.Event{Winner: gotv.T, Reason: "Bomb exploded"})
+	got := plain(historyLine(m.rounds, 21, 16)) // room for 8 cells after the label
+	if !strings.HasSuffix(got, "✱") || len([]rune(got)) > 16 {
+		t.Fatalf("%q: the newest round must stay visible", got)
+	}
+}

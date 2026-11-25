@@ -21,11 +21,20 @@ type probeMsg feeds.Status
 
 // autoMsg re-probes the list; its loop only continues while the list gets messages,
 // so it stops by itself when a match is open (a new list starts a new loop).
-type autoMsg struct{}
+type autoMsg struct{ gen int }
 
 const autoEvery = 30 * time.Second
 
-func autoTick() tea.Cmd { return tea.Tick(autoEvery, func(time.Time) tea.Msg { return autoMsg{} }) }
+func autoTick(gen int) tea.Cmd {
+	return tea.Tick(autoEvery, func(time.Time) tea.Msg { return autoMsg{gen} })
+}
+
+// resume re-probes on coming back from a match and starts a fresh refresh loop
+// (the old one ended, or ends at its next tick, being of an older generation).
+func (m *listModel) resume() tea.Cmd {
+	m.gen++
+	return tea.Batch(m.refresh(), autoTick(m.gen))
+}
 
 type peekMsg struct {
 	url string
@@ -49,6 +58,7 @@ type listModel struct {
 	confirmDelete bool
 	saveErr       string
 	spin          spinner.Model
+	gen           int // refresh loop generation
 	w             int
 }
 
@@ -57,7 +67,7 @@ var stateColor = map[feeds.State]lipgloss.Color{feeds.Live: "2", feeds.Stale: "3
 func newList(file string) (*listModel, tea.Cmd) {
 	m := &listModel{file: file, feeds: feeds.Load(file), status: map[string]feeds.Status{}, match: map[string]*gotv.Summary{},
 		spin: spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("6"))))}
-	return m, tea.Batch(m.refresh(), autoTick())
+	return m, tea.Batch(m.refresh(), autoTick(m.gen))
 }
 
 // refresh re-probes every source; also restarts the spinner, whose tick loop stops
@@ -112,7 +122,10 @@ func (m *listModel) editing() bool { return m.form != nil }
 func (m *listModel) update(msg tea.Msg) (string, tea.Cmd) {
 	switch msg := msg.(type) {
 	case autoMsg:
-		return "", tea.Batch(quietProbe(m.feeds...), autoTick())
+		if msg.gen != m.gen {
+			return "", nil
+		}
+		return "", tea.Batch(quietProbe(m.feeds...), autoTick(m.gen))
 	case probeMsg:
 		prev, had := m.status[msg.URL]
 		m.status[msg.URL] = feeds.Status(msg)

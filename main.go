@@ -41,6 +41,7 @@ func main() {
 		}
 	}
 	arg := strings.TrimSpace(strings.Join(args, " "))
+	var rec *record.Recorder
 	switch {
 	case arg == "--version" || arg == "-v":
 		fmt.Println(version)
@@ -59,10 +60,12 @@ func main() {
 			if len(args) > 2 {
 				dir = args[2]
 			}
-			if err := gotv.RecordTo(dir); err != nil {
+			r, err := gotv.RecordTo(dir)
+			if err != nil {
 				fmt.Fprintln(os.Stderr, "record:", err)
 				os.Exit(1)
 			}
+			rec = r
 			fmt.Fprintln(os.Stderr, "recording to", dir)
 			arg = args[1]
 			break
@@ -107,6 +110,9 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	if rec != nil && rec.Err() != nil {
+		fmt.Fprintln(os.Stderr, "warning: the recording is incomplete:", rec.Err())
 	}
 	if app.Restart { // updated from inside the app: carry on in the new binary
 		if exe, err := os.Executable(); err == nil {

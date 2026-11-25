@@ -28,8 +28,11 @@ asset="gotv-tui-$os-$arch"
 url="https://github.com/$REPO/releases/latest/download/$asset.gz"
 
 mkdir -p "$DIR"
-tmp=$(mktemp "${TMPDIR:-/tmp}/gotv-tui.XXXXXX")
-trap 'rm -f "$tmp" "$tmp.gz"' EXIT
+# A private (0700) staging directory beside the target: what gets checked is what
+# gets installed, and the final mv stays on one filesystem.
+stage=$(mktemp -d "$DIR/.gotv-tui-install.XXXXXX")
+trap 'rm -rf "$stage"' EXIT
+tmp="$stage/gotv-tui"
 echo "Downloading $asset ..."
 curl -fSL --progress-bar "$url" -o "$tmp.gz"
 sum=$(curl -fsSL "https://github.com/$REPO/releases/latest/download/SHA256SUMS" | awk -v f="$asset.gz" '$2 == f {print $1}')
@@ -44,7 +47,6 @@ fi
 rm -f "$tmp.gz"
 chmod 755 "$tmp"
 mv "$tmp" "$DIR/gotv-tui"
-trap - EXIT
 
 echo "Installed $("$DIR/gotv-tui" --version 2>/dev/null || echo gotv-tui) to $DIR/gotv-tui"
 case ":$PATH:" in

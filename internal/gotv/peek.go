@@ -3,6 +3,7 @@ package gotv
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	demoinfocs "github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs"
@@ -22,7 +23,12 @@ const peekTimeout = 15 * time.Second
 
 // Peek reads a relay just far enough (its first full snapshot) to tell the teams,
 // score and round, then stops.
-func Peek(ctx context.Context, url string) (*Summary, error) {
+func Peek(ctx context.Context, url string) (s *Summary, err error) {
+	defer func() { // a parser panic is a failed probe, not a crashed app
+		if r := recover(); r != nil {
+			s, err = nil, fmt.Errorf("relay parser crashed: %v", r)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(ctx, peekTimeout)
 	defer cancel()
 	r, err := cstv.NewReader(ctx, url, cstv.WithHTTPClient(relayClient))
