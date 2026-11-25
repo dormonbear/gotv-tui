@@ -14,7 +14,7 @@ func TestHistoryLine(t *testing.T) {
 	m.recordRound(14, gotv.Event{Winner: gotv.CT, Reason: "Bomb defused"}) // replaced, not added
 	got := plain(historyLine(nil, m.rounds, 15, 80))
 	// rounds 1-12 happened before we connected; a gap at halftime
-	if want := " rounds ------------ ✱✓"; got != want {
+	if want := " ROUNDS ------------ ✱✓"; got != want {
 		t.Fatalf("%q, want %q", got, want)
 	}
 	if historyLine(nil, nil, 1, 80) != "" {
@@ -63,7 +63,7 @@ func TestHistoryKeepsNewestWhenNarrow(t *testing.T) {
 func TestHistoryFromRulesAndLive(t *testing.T) {
 	known := []gotv.Outcome{{Winner: gotv.CT, Reason: "Enemy eliminated"}, {Winner: gotv.T, Reason: "Bomb exploded"}, {}} // round 3: unknown code
 	live := []roundResult{{4, gotv.CT, "Bomb defused"}}                                                                   // seen live after the rules' copy
-	if got := plain(historyLine(known, live, 5, 80)); got != " rounds ✕✱-✓" {
+	if got := plain(historyLine(known, live, 5, 80)); got != " ROUNDS ✕✱-✓" {
 		t.Fatalf("%q", got)
 	}
 }
