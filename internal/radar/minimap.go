@@ -405,12 +405,12 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 					cx += w - 1 // facing right: the arrow goes after the name
 				}
 				putCell(cx+dx, cy+dy, glyph{ch: ch, fg: teamColor(pl.Side), bold: true}, false)
-				if o.Floor.Raised(*pl.Pos) {
+				if g, ok := heightGlyph(o.Floor, *pl.Pos); ok {
 					ux, uy := cx-1, cy // left of the label, unless the arrow is there
 					if dx < 0 && dy == 0 {
 						uy--
 					}
-					putCell(ux, uy, glyph{ch: "▴", fg: term.White, bold: true}, false)
+					putCell(ux, uy, g, false)
 				}
 			}
 		}
@@ -635,3 +635,16 @@ type labelMem struct {
 
 // labelHold is how long a name/number choice sticks before it may flip back.
 const labelHold = 800 * time.Millisecond
+
+var underC = term.RGB{150, 150, 150}
+
+// heightGlyph is ▴ for a player above the ground, ▾ for one under a floor.
+func heightGlyph(f Floor, v gotv.Vec) (glyph, bool) {
+	switch {
+	case f.Raised(v):
+		return glyph{ch: "▴", fg: term.White, bold: true}, true
+	case f.Under(v):
+		return glyph{ch: "▾", fg: underC, bold: true}, true
+	}
+	return glyph{}, false
+}
