@@ -53,6 +53,7 @@ type listModel struct {
 	status        map[string]feeds.Status
 	match         map[string]*gotv.Summary // who is playing, once peeked
 	sel           int
+	rowY          int // screen row of the first source, set by view
 	form          *form
 	confirmDelete bool
 	saveErr       string
@@ -147,6 +148,8 @@ func (m *listModel) update(msg tea.Msg) (string, tea.Cmd) {
 			}
 		}
 		return "", nil
+	case tea.MouseMsg:
+		return m.mouse(msg), nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
@@ -256,4 +259,29 @@ func matchText(s *gotv.Summary) string {
 		round = " · ended"
 	}
 	return fmt.Sprintf(" · %s %d : %d %s%s", s.CT.Name, s.CT.Score, s.T.Score, s.T.Name, round)
+}
+
+// mouse: click a source to select it, click the selected one to watch it; the
+// wheel moves the selection.
+func (m *listModel) mouse(e tea.MouseMsg) string {
+	if m.form != nil || len(m.feeds) == 0 {
+		return ""
+	}
+	switch {
+	case e.Button == tea.MouseButtonWheelUp:
+		m.sel = max(0, m.sel-1)
+	case e.Button == tea.MouseButtonWheelDown:
+		m.sel = min(len(m.feeds)-1, m.sel+1)
+	case e.Button == tea.MouseButtonLeft && e.Action == tea.MouseActionPress:
+		i := e.Y - m.rowY
+		if i < 0 || i >= len(m.feeds) {
+			return ""
+		}
+		m.confirmDelete = false
+		if i == m.sel {
+			return m.feeds[i].URL
+		}
+		m.sel = i
+	}
+	return ""
 }

@@ -153,7 +153,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.match != nil {
 			return a, a.match.update(msg)
 		}
-		return a, nil
+		if a.list == nil {
+			return a, nil
+		}
+		if a.gfx == term.Kitty && a.out != nil { // pixel reports: back to cells for the list
+			cw, ch := term.CellPixels()
+			msg.X, msg.Y = msg.X/cw, msg.Y/ch
+		}
+		return a, a.open(a.list.update(msg))
 	case tea.KeyMsg:
 		k := msg.String()
 		if k == "ctrl+c" {
@@ -196,16 +203,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.match.update(msg)
 	}
 	if a.list != nil {
-		url, cmd := a.list.update(msg)
-		if url != "" {
-			m, start := newMatch(url, a.w, a.h)
-			m.out, m.gfx = a.out, a.gfx
-			a.match = m
-			return a, tea.Batch(cmd, start)
-		}
-		return a, cmd
+		return a, a.open(a.list.update(msg))
 	}
 	return a, nil
+}
+
+// open starts watching url when the list picked one.
+func (a *App) open(url string, cmd tea.Cmd) tea.Cmd {
+	if url == "" {
+		return cmd
+	}
+	m, start := newMatch(url, a.w, a.h)
+	m.out, m.gfx = a.out, a.gfx
+	a.match = m
+	return tea.Batch(cmd, start)
 }
 
 func (a *App) quit() tea.Cmd {
