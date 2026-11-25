@@ -70,7 +70,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch k {
 			case "q":
 				return a, a.quit()
-			case "b": // back to the source list
+			case "b", "esc": // back to the source list
 				a.match.hideImages()
 				a.match.close()
 				a.match = nil

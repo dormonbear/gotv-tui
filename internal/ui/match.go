@@ -441,7 +441,7 @@ func (m *matchModel) view() string {
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b sources · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
+	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b/esc sources · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
 	return screen + "\n" + footer
 }
 

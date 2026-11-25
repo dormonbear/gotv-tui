@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
+	"github.com/dormonbear/gotv-tui/internal/gotv"
+	"github.com/dormonbear/gotv-tui/internal/record"
 	"github.com/dormonbear/gotv-tui/internal/term"
 	"github.com/dormonbear/gotv-tui/internal/ui"
 	"github.com/dormonbear/gotv-tui/internal/update"
@@ -22,6 +25,8 @@ usage:
   gotv-tui                      pick a source from the list
   gotv-tui <relay url>          open a relay, e.g. https://cstv.fragnet.net/a
   gotv-tui 'playcast "<url>"'   same, pasted from a tournament page
+  gotv-tui record <url> [dir]   watch a relay and save it to dir (default gotv-<time>)
+  gotv-tui replay <dir>         watch a saved recording, paced as it was broadcast
   gotv-tui update               update the binary to the latest release
   gotv-tui --version
 `
@@ -47,6 +52,27 @@ func main() {
 		}
 		fmt.Println(msg)
 		return
+	case len(args) >= 2 && (args[0] == "record" || args[0] == "replay"):
+		if args[0] == "record" {
+			dir := "gotv-" + time.Now().Format("20060102-150405")
+			if len(args) > 2 {
+				dir = args[2]
+			}
+			if err := gotv.RecordTo(dir); err != nil {
+				fmt.Fprintln(os.Stderr, "record:", err)
+				os.Exit(1)
+			}
+			fmt.Fprintln(os.Stderr, "recording to", dir)
+			arg = args[1]
+			break
+		}
+		url, stop, err := record.Serve(args[1])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "replay:", err)
+			os.Exit(1)
+		}
+		defer stop()
+		arg = url
 	case arg == "--help" || arg == "-h":
 		fmt.Printf(usage, version)
 		return
