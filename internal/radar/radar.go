@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
 )
 
 // Valve radar PNGs + overview files dumped from the game. Fetched once and cached;
@@ -85,13 +87,25 @@ type Assets struct {
 
 var errNotFound = fmt.Errorf("not found")
 
+var client = &http.Client{Timeout: 20 * time.Second}
+
+// valid rejects a truncated or wrong download (e.g. an HTML error page) so it is
+// neither used nor cached.
+func valid(name string, b []byte) bool {
+	if strings.HasSuffix(name, ".png") {
+		_, err := png.DecodeConfig(bytes.NewReader(b))
+		return err == nil
+	}
+	return ParseOverview(string(b)).Scale > 0
+}
+
 func cached(name string) ([]byte, error) {
 	home, _ := os.UserHomeDir()
 	file := filepath.Join(home, ".cache", "gotv-tui", "radar", name)
-	if b, err := os.ReadFile(file); err == nil {
-		return b, nil
+	if b, err := os.ReadFile(file); err == nil && valid(name, b) {
+		return b, nil // a bad cached copy (older versions cached anything) is fetched again
 	}
-	r, err := http.Get(src + "/" + name)
+	r, err := client.Get(src + "/" + name)
 	if err != nil {
 		return nil, err
 	}
@@ -106,8 +120,13 @@ func cached(name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !valid(name, b) {
+		return nil, fmt.Errorf("radar %s: invalid download", name)
+	}
 	_ = os.MkdirAll(filepath.Dir(file), 0o755)
-	_ = os.WriteFile(file, b, 0o644)
+	if tmp := file + ".tmp"; os.WriteFile(tmp, b, 0o644) == nil { // whole file or nothing
+		_ = os.Rename(tmp, file)
+	}
 	return b, nil
 }
 

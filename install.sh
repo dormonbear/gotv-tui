@@ -29,9 +29,16 @@ url="https://github.com/$REPO/releases/latest/download/$asset.gz"
 
 mkdir -p "$DIR"
 tmp=$(mktemp "${TMPDIR:-/tmp}/gotv-tui.XXXXXX")
-trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$tmp" "$tmp.gz"' EXIT
 echo "Downloading $asset ..."
-curl -fSL --progress-bar "$url" | gunzip > "$tmp"
+curl -fSL --progress-bar "$url" -o "$tmp.gz"
+sum=$(curl -fsSL "https://github.com/$REPO/releases/latest/download/SHA256SUMS" | awk -v f="$asset.gz" '$2 == f {print $1}')
+got=$( (sha256sum "$tmp.gz" 2>/dev/null || shasum -a 256 "$tmp.gz") | awk '{print $1}')
+if [ -z "$sum" ] || [ "$sum" != "$got" ]; then
+  echo "gotv-tui: checksum mismatch for $asset.gz (expected '$sum', got '$got')" >&2
+  rm -f "$tmp.gz"; exit 1
+fi
+gunzip -c "$tmp.gz" > "$tmp" && rm -f "$tmp.gz"
 chmod 755 "$tmp"
 mv "$tmp" "$DIR/gotv-tui"
 trap - EXIT

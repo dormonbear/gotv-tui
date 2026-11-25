@@ -1,7 +1,9 @@
 package radar
 
 import (
+	"bytes"
 	"image"
+	"image/png"
 	"regexp"
 	"strings"
 	"testing"
@@ -267,5 +269,16 @@ func TestKillLineIsThinAndHeadshotMarked(t *testing.T) {
 	k.At = now.Add(-2 * time.Second) // headshot mark gone after hsShow
 	if rows := Draw(r, BuildBase(r, 1), &gotv.State{}, Opts{Kills: []KillMark{k}, Now: now}); strings.Contains(string(strip(rows[3])), "HS") {
 		t.Fatal("headshot mark still shown")
+	}
+}
+
+func TestValidRejectsBadDownloads(t *testing.T) {
+	var png1 bytes.Buffer
+	_ = png.Encode(&png1, image.NewNRGBA(image.Rect(0, 0, 1, 1)))
+	if !valid("de_nuke.png", png1.Bytes()) || valid("de_nuke.png", []byte("<html>portal</html>")) || valid("de_nuke.png", png1.Bytes()[:10]) {
+		t.Fatal("png validation")
+	}
+	if !valid("de_nuke.txt", []byte(`"de_nuke" { "pos_x" "-3453" "pos_y" "2887" "scale" "7" }`)) || valid("de_nuke.txt", []byte("<html>")) {
+		t.Fatal("overview validation")
 	}
 }
