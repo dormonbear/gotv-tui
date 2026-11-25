@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,6 +49,17 @@ type levelMap struct {
 	r      *radar.Raster
 	base   *radar.Base
 }
+
+// delayNote reminds that a relay runs behind the live match (a demo doesn't).
+func delayNote(url string) string {
+	if strings.HasPrefix(url, DemoPrefix) {
+		return ""
+	}
+	return " · CSTV ~3min delay"
+}
+
+// DemoPrefix marks a source that is a .dem file rather than a relay URL.
+const DemoPrefix = "demo:"
 
 type matchModel struct {
 	url     string
@@ -115,14 +127,32 @@ func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
 		case <-ctx.Done():
 		}
 	}
-	go gotv.Connect(ctx, url, gotv.Handlers{
+	hs := gotv.Handlers{
 		State:  func(s gotv.State) { send(stateMsg(s), true) },
 		Event:  func(e gotv.Event) { send(eventMsg(e), false) },
 		Status: func(s string) { send(statusMsg(s), false) },
 		Ahead: func(soon []playback.Soon[gotv.Event], _ *gotv.State) {
 			send(aheadMsg(soon), true)
 		},
-	})
+	}
+	if src, ok := strings.CutPrefix(url, DemoPrefix); ok {
+		path, speed := src, 1.0
+		if i := strings.LastIndexByte(src, '@'); i > 0 { // demo:<path>@<speed>
+			if v, err := strconv.ParseFloat(src[i+1:], 64); err == nil {
+				path, speed = src[:i], v
+			}
+		}
+		go func() {
+			hs.Status(fmt.Sprintf("playing demo at %gx", speed))
+			if err := gotv.PlayDemo(ctx, path, speed, hs); err != nil && ctx.Err() == nil {
+				hs.Status("demo: " + err.Error())
+				return
+			}
+			hs.Status("demo over")
+		}()
+	} else {
+		go gotv.Connect(ctx, url, hs)
+	}
 	// the director runs by default; any manual camera move takes over
 	m.directing, m.dir, m.moving = true, director.New(), true
 	return m, tea.Batch(m.wait(), tick(), animTick())
@@ -158,8 +188,8 @@ func (m *matchModel) applyEvent(e gotv.Event, now time.Time) {
 	switch {
 	case e.Kind == gotv.EvRoundStart:
 		m.kills = nil
-	case e.Kind == gotv.EvRoundEnd && m.st != nil:
-		m.recordRound(m.st.Round, e) // the state still shows the round that just ended
+	case e.Kind == gotv.EvRoundEnd:
+		m.recordRound(e.Round, e)
 	case e.Kind == gotv.EvKill && e.To != nil:
 		m.kills = append(m.kills, radar.KillMark{From: e.From, To: *e.To, Victim: e.Victim.Side, Headshot: e.Headshot, At: now})
 	}
@@ -376,7 +406,7 @@ func (m *matchModel) panel(nums map[string]int, compact bool) []string {
 		return []string{dim(" " + m.status + " · waiting for game state...")}
 	}
 	lines := []string{header(m.st)}
-	if h := historyLine(m.rounds, m.st.Round, m.panelW); h != "" {
+	if h := historyLine(m.st.History, m.rounds, m.st.Round, m.panelW); h != "" {
 		lines = append(lines, h)
 	}
 	m.rowPlayer = map[int]string{}
@@ -464,7 +494,7 @@ func (m *matchModel) view() string {
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	footer := fmt.Sprintf(" q quit · b/esc sources · s stats · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status)
+	footer := fmt.Sprintf(" q quit · b/esc sources · s stats · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s%s", zoom, m.status, delayNote(m.url))
 	if m.notice != "" { // first, so a narrow footer keeps it
 		footer = " " + m.notice + " ·" + footer
 	}

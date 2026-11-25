@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/golang/geo/r3"
@@ -13,6 +14,7 @@ import (
 	"github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/common"
 	"github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/cstv"
 	"github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/events"
+	"github.com/markus-wa/demoinfocs-golang/v6/pkg/demoinfocs/msg"
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
 	"github.com/dormonbear/gotv-tui/internal/playback"
@@ -149,10 +151,41 @@ func stream(parent context.Context, url string, s *feeds.Sync, h Handlers) (err 
 	}
 	p := demoinfocs.NewParser(r)
 	defer p.Close()
-	tps := s.TPS
+	return play(parent, ctx, p, s.Map, s.TPS, h, 0)
+}
+
+// PlayDemo plays a .dem file through the same pipeline as a relay, at speed times
+// real time, until it ends or ctx is done.
+func PlayDemo(ctx context.Context, path string, speed float64, h Handlers) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("demo parser crashed: %v", r)
+		}
+	}()
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	p := demoinfocs.NewParser(f)
+	defer p.Close()
+	child, cancel := context.WithCancel(ctx)
+	defer cancel()
+	return play(ctx, child, p, "", 0, h, max(speed, 0.1))
+}
+
+// play runs a parser into playback and out to h. speed > 0 holds the parser to
+// speed times real time (a file parses far faster than it was played); a relay
+// (speed 0) paces itself.
+func play(parent, ctx context.Context, p *demoinfocs.Parser, mapName string, tps float64, h Handlers, speed float64) (err error) {
 	if tps <= 0 {
 		tps = 64
 	}
+	p.RegisterNetMessageHandler(func(m *msg.CSVCMsg_ServerInfo) {
+		if mapName == "" {
+			mapName = term.Clean(m.GetMapName(), 40)
+		}
+	})
 	pb := playback.New[State, Event](tps, Lookahead, Lookahead+4)
 	gs := p.GameState()
 	tick := func() int { return gs.IngameTick() }
@@ -160,10 +193,24 @@ func stream(parent context.Context, url string, s *feeds.Sync, h Handlers) (err 
 	smokes := map[int]Vec{} // live smoke clouds by projectile entity id
 
 	last := -sampleTicks
+	var wall0 time.Time
+	var game0 time.Duration
 	p.RegisterEventHandler(func(events.FrameDone) {
+		if speed > 0 {
+			if wall0.IsZero() {
+				wall0, game0 = time.Now(), p.CurrentTime()
+			}
+			ahead := time.Duration(float64(p.CurrentTime()-game0)/speed) - time.Since(wall0)
+			if ahead > 200*time.Millisecond {
+				select { // stay at most a moment ahead of the clock
+				case <-time.After(ahead):
+				case <-ctx.Done():
+				}
+			}
+		}
 		if t := tick(); t >= last+sampleTicks {
 			last = t
-			pb.PushFrame(t, snapshot(p, s.Map, smokes))
+			pb.PushFrame(t, snapshot(p, mapName, smokes))
 		}
 	})
 	p.RegisterEventHandler(func(e events.Kill) {
@@ -191,7 +238,8 @@ func stream(parent context.Context, url string, s *feeds.Sync, h Handlers) (err 
 		if !ok {
 			reason = clean(e.Message)
 		}
-		emit(Event{Kind: EvRoundEnd, Winner: sideOf(e.Winner), Reason: reason})
+		// the rounds-played count already includes this round here (checked on demos)
+		emit(Event{Kind: EvRoundEnd, Winner: sideOf(e.Winner), Reason: reason, Round: gs.TotalRoundsPlayed()})
 	})
 	p.RegisterEventHandler(func(e events.BombPlanted) { emit(Event{Kind: EvPlant, Player: name(e.Player)}) })
 	p.RegisterEventHandler(func(e events.BombDefused) { emit(Event{Kind: EvDefuse, Player: name(e.Player)}) })
@@ -207,7 +255,7 @@ func stream(parent context.Context, url string, s *feeds.Sync, h Handlers) (err 
 			case <-ctx.Done():
 				return
 			case now := <-t.C:
-				frame, evs := pb.Step(float64(now.UnixMilli()))
+				frame, evs := pb.Step(float64(now.UnixMilli()) * max(speed, 1)) // a sped-up demo plays out as fast
 				for _, e := range evs {
 					h.Event(e)
 				}
@@ -221,7 +269,7 @@ func stream(parent context.Context, url string, s *feeds.Sync, h Handlers) (err 
 		}
 	}()
 	err = p.ParseToEnd(ctx)
-	if parent.Err() == nil { // the relay ended, the viewer didn't leave: play out the buffer
+	if parent.Err() == nil { // the input ended, the viewer didn't leave: play out the buffer
 		deadline := time.After(time.Duration((Lookahead + 4) * float64(time.Second)))
 		for pb.Pending() {
 			select {

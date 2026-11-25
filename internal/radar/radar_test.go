@@ -290,3 +290,13 @@ func TestLoadRejectsOddMapNames(t *testing.T) {
 		}
 	}
 }
+
+func TestWideNamesKeepTheirNumber(t *testing.T) {
+	const W, H = 60, 16
+	r := &Raster{W: W, H: H, Pixels: make([]byte, W*SS*H*SS*4), Aspect: 2, ov: Overview{Scale: 1}, k: 1, ky: 1}
+	st := &gotv.State{Players: []gotv.Player{{Name: "あなたの王様", Side: gotv.T, Alive: true, Yaw: 180, Pos: &gotv.Vec{X: 4, Y: 0}}}}
+	rows := Draw(r, BuildBase(r, 1), st, Opts{Names: true, Nums: map[string]int{"あなたの王様": 4}})
+	if got := string(strip(rows[0])); strings.Contains(got, "あ") || !strings.Contains(got, "4") {
+		t.Fatalf("%q: a wide name should show its number", got)
+	}
+}

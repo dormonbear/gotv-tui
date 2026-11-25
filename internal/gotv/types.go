@@ -91,6 +91,12 @@ type Team struct {
 	Score int
 }
 
+// Outcome is how a finished round ended.
+type Outcome struct {
+	Winner Side
+	Reason string // as in Event.Reason
+}
+
 type State struct {
 	Map         string
 	CT, T       Team
@@ -103,6 +109,7 @@ type State struct {
 	Bomb        *Bomb
 	Players     []Player
 	Utility     []Utility
+	History     []Outcome // finished rounds in order, from the game rules (first 30)
 }
 
 type Who struct {
@@ -132,7 +139,7 @@ type Event struct {
 	ThroughSmoke, NoScope    bool
 	Blind                    bool
 	From, To                 *Vec
-	// roundStart
+	// roundStart: the round starting; roundEnd: the round that ended
 	Round int
 	// roundEnd
 	Winner Side // "" for a draw

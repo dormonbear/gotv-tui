@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/term"
 )
@@ -500,6 +502,11 @@ func playerLabels(players []gotv.Player, o Opts, here func(gotv.Vec) bool, toCel
 		name := []rune(m.name)
 		if len(name) > maxLen {
 			name = name[:maxLen]
+		}
+		// ponytail: labels are drawn one rune per cell, and the sprite font is ASCII;
+		// a name with wide (CJK) characters keeps its number instead
+		if ansi.StringWidth(string(name)) != len(name) {
+			continue
 		}
 		label := " " + string(name) + " "
 		if maxLen <= shortName {
