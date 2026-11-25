@@ -4,6 +4,7 @@ import (
 	"errors"
 	"image"
 	"math"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/dormonbear/gotv-tui/internal/director"
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/radar"
+	"github.com/dormonbear/gotv-tui/internal/term"
 )
 
 // testMatch has a fully-floored 1024x1024 radar with world == radar coords (y flipped).
@@ -346,5 +348,35 @@ func TestDirectorSurvivesPlainClicks(t *testing.T) {
 	press(ex+3, ey+1, tea.MouseButtonNone, tea.MouseActionMotion)
 	if m.directing {
 		t.Fatal("dragging the map should take the camera from the director")
+	}
+}
+
+func TestShakyClickIsNotADrag(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.Close() })
+	m := testMatch(false)
+	m.out, m.gfx = term.NewLockedFile(f), term.Kitty // pixel mouse reports, as in Ghostty
+	m.view()
+	m.toggleDirector()
+	cw, ch := term.CellPixels()
+	lv := m.levels[0]
+	px, py := (lv.sx+5)*cw, (lv.sy+3)*ch
+	ev := func(x, y int, b tea.MouseButton, a tea.MouseAction) {
+		m.mouse(tea.MouseMsg{X: x, Y: y, Button: b, Action: a})
+	}
+	ev(px, py, tea.MouseButtonLeft, tea.MouseActionPress)
+	ev(px+3, py+2, tea.MouseButtonLeft, tea.MouseActionMotion) // the hand twitches a few pixels
+	ev(px+3, py+2, tea.MouseButtonLeft, tea.MouseActionRelease)
+	if !m.directing {
+		t.Fatal("a click that moved a few pixels was taken as a drag")
+	}
+	ev(px, py, tea.MouseButtonLeft, tea.MouseActionPress)
+	ev(px+4*cw, py+ch, tea.MouseButtonLeft, tea.MouseActionMotion) // a real drag
+	ev(px+4*cw, py+ch, tea.MouseButtonLeft, tea.MouseActionRelease)
+	if m.directing {
+		t.Fatal("a real drag should take the camera")
 	}
 }
