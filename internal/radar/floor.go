@@ -1,6 +1,8 @@
 package radar
 
 import (
+	_ "embed"
+	"encoding/json"
 	"math"
 
 	"github.com/dormonbear/gotv-tui/internal/gotv"
@@ -51,4 +53,22 @@ func (f Floor) Raised(v gotv.Vec) bool {
 func (f Floor) Under(v gotv.Vec) bool {
 	s, ok := f[floorKey(v)]
 	return ok && s.hi-v.Z > underBy
+}
+
+//go:embed floors.json
+var floorsJSON []byte
+
+// KnownFloor is the floor learnt ahead of time from demos (scripts/floorgen), so
+// the markers work from the first second; live play keeps adding to it. Empty
+// for maps without data.
+func KnownFloor(mapName string) Floor {
+	var all map[string][][4]int
+	f := Floor{}
+	if json.Unmarshal(floorsJSON, &all) != nil {
+		return f
+	}
+	for _, c := range all[mapName] {
+		f[[2]int{c[0], c[1]}] = span{float64(c[2]), float64(c[3])}
+	}
+	return f
 }

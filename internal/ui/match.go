@@ -225,7 +225,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 			m.rounds = nil // another match
 		}
 		if m.floor == nil || (m.st != nil && s.Map != m.st.Map) {
-			m.floor = radar.Floor{}
+			m.floor = radar.KnownFloor(s.Map)
 		}
 		m.floor.Observe(s.Players)
 		m.st = &s
