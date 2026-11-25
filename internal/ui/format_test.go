@@ -52,7 +52,7 @@ func TestStatsView(t *testing.T) {
 		}
 	}
 	// each number sits under its column title
-	for col, val := range map[string]string{"HS%": "50%", "KAS": "80%", "KPR": "1.20"} {
+	for col, val := range map[string]string{"HS%": "50%", "KAST": "80%", "KPR": "1.20"} {
 		if strings.Index(head, col)+len(col) != strings.Index(row, val)+len(val) {
 			t.Errorf("%s not right-aligned with %s:\n%s\n%s", val, col, head, row)
 		}

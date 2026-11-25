@@ -132,8 +132,8 @@ var (
 	columns        = fmt.Sprintf("%-14s %6s   K  D  A%6s  KIT %-11sUTIL", "HP", "$", "ADR", "WEAPON")
 	compactColumns = fmt.Sprintf(" %4s %6s%3s%3s WEAPON", "HP", "$", "K", "D")
 	// the stats view (s): match totals instead of the live state
-	statsColumns        = fmt.Sprintf("%3s%3s%3s %4s %5s %4s %4s %4s %4s %3s  %s", "K", "D", "A", "+/-", "ADR", "HS%", "KAS", "KPR", "UD", "EF", "3K 4K 5K")
-	compactStatsColumns = fmt.Sprintf("%3s%3s %4s %5s %4s %4s", "K", "D", "+/-", "ADR", "HS%", "KAS")
+	statsColumns        = fmt.Sprintf("%3s%3s%3s %4s %5s %4s %4s %4s %4s %3s  %s", "K", "D", "A", "+/-", "ADR", "HS%", "KAST", "KPR", "UD", "EF", "3K 4K 5K")
+	compactStatsColumns = fmt.Sprintf("%3s%3s %4s %5s %4s %4s", "K", "D", "+/-", "ADR", "HS%", "KAST")
 )
 
 // pct is part/whole as a whole percentage, "-" when there is nothing to divide by.

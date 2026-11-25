@@ -300,3 +300,17 @@ func TestWideNamesKeepTheirNumber(t *testing.T) {
 		t.Fatalf("%q: a wide name should show its number", got)
 	}
 }
+
+func TestTouchingBadgesAlternate(t *testing.T) {
+	const W, H = 20, 20
+	r := &Raster{W: W, H: H, Pixels: make([]byte, W*SS*H*SS*4), Aspect: 2, ov: Overview{Scale: 1}, k: 1, ky: 1}
+	pl := func(name string, x float64) gotv.Player {
+		return gotv.Player{Name: name, Side: gotv.CT, Pos: &gotv.Vec{X: x, Y: -9}, Alive: true, Yaw: 90}
+	}
+	st := &gotv.State{Players: []gotv.Player{pl("a", 6), pl("b", 8)}} // cells 3 and 4: "12" without help
+	rows := Draw(r, BuildBase(r, 1), st, Opts{Nums: map[string]int{"a": 1, "b": 2}})
+	bgs := regexp.MustCompile(`48;2;(\d+;\d+;\d+)m(?:\x1b\[[0-9;]*m)*[12]`).FindAllStringSubmatch(rows[2], -1)
+	if len(bgs) != 2 || bgs[0][1] == bgs[1][1] {
+		t.Fatalf("touching badges should differ in shade: %q", rows[2])
+	}
+}

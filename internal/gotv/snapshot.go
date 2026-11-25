@@ -52,7 +52,7 @@ func history(rules *st.Entity, played int) []Outcome {
 
 // roundStats sums the per-round stats of the rounds played (some servers leave the
 // m_matchStats totals at 0; the per-round ones are always filled) and returns ADR.
-func roundStats(pl *common.Player, rounds int) (float64, Stats) {
+func roundStats(pl *common.Player, rounds int, traded map[int]bool) (float64, Stats) {
 	get := func(i int, field string) int {
 		if v, ok := prop(pl.Entity, fmt.Sprintf("m_pActionTrackingServices.m_perRoundStats.%04d.%s", i, field)); ok {
 			return v.Int()
@@ -67,7 +67,7 @@ func roundStats(pl *common.Player, rounds int) (float64, Stats) {
 		s.HSKills += get(i, "m_iHeadShotKills")
 		s.UtilDamage += get(i, "m_iUtilityDamage")
 		s.Flashed += get(i, "m_iEnemiesFlashed")
-		if k > 0 || get(i, "m_iAssists") > 0 || get(i, "m_iDeaths") == 0 {
+		if k > 0 || get(i, "m_iAssists") > 0 || get(i, "m_iDeaths") == 0 || traded[i] {
 			s.KASRounds++
 		}
 		if k >= 3 {
@@ -78,7 +78,7 @@ func roundStats(pl *common.Player, rounds int) (float64, Stats) {
 	return float64(max(dmg, pl.TotalDamage())) / float64(max(1, rounds)), s
 }
 
-func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
+func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec, tr trades) State {
 	gs := p.GameState()
 	now := p.CurrentTime().Seconds()
 	played := gs.TotalRoundsPlayed()
@@ -121,7 +121,7 @@ func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
 		if pl.Entity != nil {
 			pos = vec(pl.Position())
 		}
-		adrOf, stats := roundStats(pl, played)
+		adrOf, stats := roundStats(pl, played, tr[pl.Name])
 		s.Players = append(s.Players, Player{
 			Name: clean(pl.Name), Side: side, Pos: pos, Yaw: float64(pl.ViewDirectionX()),
 			Alive: pl.IsAlive(), Blind: pl.FlashDurationTimeRemaining().Seconds(), HP: pl.Health(), Armor: pl.Armor(), Helmet: pl.HasHelmet(), Defuser: pl.HasDefuseKit(),

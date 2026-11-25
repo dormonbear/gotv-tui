@@ -135,13 +135,24 @@ func FitScale(box Box, maxW, maxH int, aspect float64) float64 {
 // Rasterize renders the cropped radar to fit maxW x maxH dots, keeping the map's
 // proportions on screen for the terminal's cell aspect.
 func Rasterize(img *image.NRGBA, ov Overview, box Box, maxW, maxH int, aspect float64) *Raster {
+	r := Mapping(ov, box, maxW, maxH, aspect)
+	r.Pixels = Resample(img, box, r.W*SS, r.H*SS)
+	return r
+}
+
+// Mapping is a Raster without pixels: the world/screen mapping alone, for when the
+// terminal draws the radar image itself.
+func Mapping(ov Overview, box Box, maxW, maxH int, aspect float64) *Raster {
 	k := FitScale(box, maxW, maxH, aspect)
 	w := max(8, int(k*box.W))
 	k = float64(w) / box.W
 	ky := k * 2 / aspect
 	h := max(1, int(math.Round(box.H*ky)))
-	return &Raster{W: w, H: h, Pixels: Resample(img, box, w*SS, h*SS), Aspect: aspect, ov: ov, box: box, k: k, ky: ky}
+	return &Raster{W: w, H: h, Aspect: aspect, ov: ov, box: box, k: k, ky: ky}
 }
+
+// Size is the base of a pixel-less Raster: its size in cells, no map drawn.
+func Size(r *Raster) *Base { return &Base{CW: (r.W + 1) / 2, CH: (r.H + 3) / 4} }
 
 // MaxZoom: past ~4x a braille dot is finer than a radar pixel and only blurs.
 const MaxZoom = 4.0
