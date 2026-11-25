@@ -25,15 +25,32 @@ func prop(e *st.Entity, name string) (st.PropertyValue, bool) {
 	return v, ok && v.Any != nil
 }
 
-// adr: some servers leave m_matchStats damage at 0; per-round stats are always filled.
-func adr(pl *common.Player, rounds int) float64 {
-	sum := 0
+// roundStats sums the per-round stats of the rounds played (some servers leave the
+// m_matchStats totals at 0; the per-round ones are always filled) and returns ADR.
+func roundStats(pl *common.Player, rounds int) (float64, Stats) {
+	get := func(i int, field string) int {
+		if v, ok := prop(pl.Entity, fmt.Sprintf("m_pActionTrackingServices.m_perRoundStats.%04d.%s", i, field)); ok {
+			return v.Int()
+		}
+		return 0
+	}
+	s := Stats{Rounds: rounds, MVPs: pl.MVPs()}
+	dmg := 0
 	for i := 0; i < rounds; i++ {
-		if v, ok := prop(pl.Entity, fmt.Sprintf("m_pActionTrackingServices.m_perRoundStats.%04d.m_iDamage", i)); ok {
-			sum += v.Int()
+		k := get(i, "m_iKills")
+		dmg += get(i, "m_iDamage")
+		s.HSKills += get(i, "m_iHeadShotKills")
+		s.UtilDamage += get(i, "m_iUtilityDamage")
+		s.Flashed += get(i, "m_iEnemiesFlashed")
+		if k > 0 || get(i, "m_iAssists") > 0 || get(i, "m_iDeaths") == 0 {
+			s.KASRounds++
+		}
+		if k >= 3 {
+			s.Multi[min(k, 5)-3]++
 		}
 	}
-	return float64(max(sum, pl.TotalDamage())) / float64(max(1, rounds))
+	s.UtilDamage = max(s.UtilDamage, pl.UtilityDamage())
+	return float64(max(dmg, pl.TotalDamage())) / float64(max(1, rounds)), s
 }
 
 func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
@@ -79,10 +96,11 @@ func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
 		if pl.Entity != nil {
 			pos = vec(pl.Position())
 		}
+		adrOf, stats := roundStats(pl, played)
 		s.Players = append(s.Players, Player{
 			Name: clean(pl.Name), Side: side, Pos: pos, Yaw: float64(pl.ViewDirectionX()),
 			Alive: pl.IsAlive(), HP: pl.Health(), Armor: pl.Armor(), Helmet: pl.HasHelmet(), Defuser: pl.HasDefuseKit(),
-			Money: pl.Money(), Equip: pl.EquipmentValueCurrent(), Kills: pl.Kills(), Deaths: pl.Deaths(), Assists: pl.Assists(), ADR: adr(pl, played),
+			Money: pl.Money(), Equip: pl.EquipmentValueCurrent(), Kills: pl.Kills(), Deaths: pl.Deaths(), Assists: pl.Assists(), ADR: adrOf, Stats: stats,
 			Gun: gun, Nades: nades, HasBomb: bomb,
 		})
 	}

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/dormonbear/gotv-tui/internal/gotv"
@@ -36,5 +37,28 @@ func TestKillLine(t *testing.T) {
 	e.Killer = e.Victim
 	if got := plain(FormatEvent(e)); got != "z4KR died [AWP]" {
 		t.Fatal(got)
+	}
+}
+
+func TestStatsView(t *testing.T) {
+	p := gotv.Player{Name: "donk", Side: gotv.T, Kills: 24, Deaths: 12, Assists: 3, ADR: 112.4,
+		Stats: gotv.Stats{Rounds: 20, HSKills: 12, KASRounds: 16, UtilDamage: 140, Flashed: 7, Multi: [3]int{3, 1, 0}}}
+	nums := map[string]int{"donk": 1}
+	rows := TeamTable(gotv.T, gotv.Team{Name: "Spirit"}, []gotv.Player{p}, nums, "", false, true)
+	head, row := plain(rows[0]), plain(rows[1])
+	for _, want := range []string{"+12", "112", "50%", "80%", "1.20", "140", "7", " 3  1 "} {
+		if !strings.Contains(row, want) {
+			t.Errorf("stats row %q lacks %q", row, want)
+		}
+	}
+	// each number sits under its column title
+	for col, val := range map[string]string{"HS%": "50%", "KAS": "80%", "KPR": "1.20"} {
+		if strings.Index(head, col)+len(col) != strings.Index(row, val)+len(val) {
+			t.Errorf("%s not right-aligned with %s:\n%s\n%s", val, col, head, row)
+		}
+	}
+	compact := plain(TeamTable(gotv.T, gotv.Team{Name: "Spirit"}, []gotv.Player{p}, nums, "", true, true)[1])
+	if !strings.Contains(compact, "50%") || len([]rune(compact)) > compactWidth {
+		t.Errorf("compact stats row %q (%d wide)", compact, len([]rune(compact)))
 	}
 }

@@ -58,6 +58,7 @@ type matchModel struct {
 	log     []gotv.Event  // newest first
 	rounds  []roundResult // results seen since connecting
 	notice  string        // app-wide notice (update available) for the footer
+	stats   bool          // scoreboard shows match stats instead of the live state
 	kills   []radar.KillMark
 	status  string
 	assets  *radar.Assets
@@ -387,7 +388,7 @@ func (m *matchModel) panel(nums map[string]int, compact bool) []string {
 		for i, p := range teamRows(side.s, m.st.Players, nums) {
 			m.rowPlayer[top+i] = strings.ToLower(p.Name)
 		}
-		lines = append(lines, TeamTable(side.s, side.t, m.st.Players, nums, m.focus, compact)...)
+		lines = append(lines, TeamTable(side.s, side.t, m.st.Players, nums, m.focus, compact, m.stats)...)
 		lines = append(lines, econLine(side.s, m.st.Players, m.st.Round))
 	}
 	return lines
@@ -463,7 +464,7 @@ func (m *matchModel) view() string {
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	footer := fmt.Sprintf(" q quit · b/esc sources · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status)
+	footer := fmt.Sprintf(" q quit · b/esc sources · s stats · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status)
 	if m.notice != "" { // first, so a narrow footer keeps it
 		footer = " " + m.notice + " ·" + footer
 	}

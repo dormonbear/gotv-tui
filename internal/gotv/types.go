@@ -33,6 +33,7 @@ type Player struct {
 	Defuser bool
 	Money   int
 	Equip   int // value of what they carry
+	Stats   Stats
 	Kills   int
 	Deaths  int
 	Assists int
@@ -40,6 +41,17 @@ type Player struct {
 	Gun     string // primary if carried, else pistol
 	Nades   []Nade // one entry per grenade
 	HasBomb bool
+}
+
+// Stats are a player's match totals, summed from the per-round stats.
+type Stats struct {
+	Rounds     int    // rounds played
+	HSKills    int    // headshot kills
+	KASRounds  int    // rounds with a kill, an assist or survived (KAST without trades)
+	UtilDamage int    // damage done with grenades
+	Flashed    int    // enemies flashed
+	Multi      [3]int // rounds with 3, 4 and 5 kills
+	MVPs       int
 }
 
 type UtilityKind string
