@@ -47,3 +47,4 @@ jobs:
           .\gotv-tui.exe replay does-not-exist 2>$null
           if ($LASTEXITCODE -ne 1) { throw "replay of a missing dir should exit 1, got $LASTEXITCODE" }
           "ok: $v"
+          exit 0
