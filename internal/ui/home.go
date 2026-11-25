@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -162,7 +163,11 @@ func (m *listModel) view(status string) string {
 	if m.form != nil {
 		keys = ""
 	}
-	footer := []string{dim(" sources: " + m.file)}
+	file := m.file
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(file, home+string(os.PathSeparator)) {
+		file = "~" + file[len(home):]
+	}
+	footer := []string{dim(" sources: " + file)}
 	if gap := w - ansi.StringWidth(keys) - ansi.StringWidth(status) - 1; gap >= 2 {
 		footer = append(footer, keys+strings.Repeat(" ", gap)+status)
 	} else { // narrow: status on its own line, then the keys
