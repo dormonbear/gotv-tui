@@ -150,6 +150,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if k == "ctrl+c" {
 			return a, a.quit()
 		}
+		if a.match != nil && a.match.sound.typing() { // q, b, u... are text here
+			return a, a.match.update(msg)
+		}
 		if k == "u" && a.latest != "" && !a.updating && (a.match != nil || !a.list.editing()) {
 			a.updating, a.notice = true, ""
 			v := a.Version

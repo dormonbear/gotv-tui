@@ -67,3 +67,29 @@ func TestPendingUntilPlayedOut(t *testing.T) {
 		t.Fatalf("not played out: pending=%v events=%v", p.Pending(), got)
 	}
 }
+
+func TestDelayHoldsAndReleases(t *testing.T) {
+	p := New[int, string](64, 4, 8)
+	now, tick, last := 0.0, 0, 0
+	feed := func(sec float64) { // live: 64 ticks a second arrive, played every 62.5 ms
+		for end := now + sec*1000; now < end; now += 62.5 {
+			tick += 4
+			p.PushFrame(tick, tick)
+			if f, _ := p.Step(now); f != nil {
+				last = *f
+			}
+		}
+	}
+	feed(10)
+	base := tick - last // the normal buffer
+	p.SetDelay(20)
+	feed(30)
+	if behind := tick - last; behind < base+20*64-64 || behind > base+20*64+64 {
+		t.Fatalf("20 s delay: %d ticks behind, want ~%d", behind, base+20*64)
+	}
+	p.SetDelay(0)
+	feed(10)
+	if behind := tick - last; behind > base+64 {
+		t.Fatalf("delay removed but still %d ticks behind (base %d)", behind, base)
+	}
+}

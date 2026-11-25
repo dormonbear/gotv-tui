@@ -17,6 +17,7 @@ type Playback[S, E any] struct {
 	resync  float64 // fell this far behind (stall, catch-up burst): jump instead of crawling
 	frames  []item[S]
 	events  []item[E]
+	delay   float64 // extra seconds held back (to match a slower stream); see SetDelay
 	play    float64
 	wall    float64 // ms
 	started bool
@@ -24,6 +25,14 @@ type Playback[S, E any] struct {
 
 func New[S, E any](tps, bufferS, resyncS float64) *Playback[S, E] {
 	return &Playback[S, E]{tps: tps, buffer: bufferS, resync: resyncS}
+}
+
+// SetDelay holds playback a further d seconds behind the newest tick (d >= 0).
+// Raising it pauses until play is that far back; lowering it catches up quickly.
+func (p *Playback[S, E]) SetDelay(d float64) {
+	p.mu.Lock()
+	p.delay = max(d, 0)
+	p.mu.Unlock()
 }
 
 // Pending reports whether anything is still queued.
@@ -59,11 +68,20 @@ func (p *Playback[S, E]) Step(nowMs float64) (frame *S, events []E) {
 	if newest < 0 {
 		return nil, nil
 	}
-	if !p.started || float64(newest)-p.play > p.tps*p.resync {
-		p.play = float64(newest) - p.tps*p.buffer
+	held := p.tps * p.delay
+	if !p.started || float64(newest)-p.play > p.tps*p.resync+held {
+		p.play = float64(newest) - p.tps*p.buffer - held
 		p.started = true
 	} else {
-		p.play = min(float64(newest), p.play+(nowMs-p.wall)/1000*p.tps)
+		step := (nowMs - p.wall) / 1000 * p.tps
+		limit := float64(newest)
+		if held > 0 { // keep the usual buffer on top of the delay
+			limit -= held + p.tps*p.buffer
+		}
+		if behind := limit - p.play; behind > p.tps*p.buffer { // catching up after a lower delay
+			step = max(step, behind/4)
+		}
+		p.play = min(limit, p.play+step)
 	}
 	p.wall = nowMs
 	i := 0

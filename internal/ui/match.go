@@ -71,6 +71,8 @@ type matchModel struct {
 	rounds  []roundResult // results seen since connecting
 	notice  string        // app-wide notice (update available) for the footer
 	stats   bool          // scoreboard shows match stats instead of the live state
+	sound   sound         // a stream's audio played along
+	send    func(tea.Msg, bool)
 	kills   []radar.KillMark
 	status  string
 	assets  *radar.Assets
@@ -134,7 +136,9 @@ func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
 		Ahead: func(soon []playback.Soon[gotv.Event], _ *gotv.State) {
 			send(aheadMsg(soon), true)
 		},
+		Delay: m.sound.delay,
 	}
+	m.send = send
 	if src, ok := strings.CutPrefix(url, DemoPrefix); ok {
 		path, speed := src, 1.0
 		if i := strings.LastIndexByte(src, '@'); i > 0 { // demo:<path>@<speed>
@@ -176,7 +180,10 @@ func tick() tea.Cmd {
 	return tea.Tick(250*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-func (m *matchModel) close() { m.cancel() }
+func (m *matchModel) close() {
+	m.cancel()
+	m.sound.stop()
+}
 
 // applyEvent appends to the log and tracks this round's kills for the map.
 func (m *matchModel) applyEvent(e gotv.Event, now time.Time) {
@@ -213,6 +220,9 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	case eventMsg:
 		m.applyEvent(gotv.Event(msg), time.Now())
 		return m.wait()
+	case soundStatusMsg:
+		m.status = term.Clean(string(msg), 120)
+		return m.wait()
 	case statusMsg:
 		m.status = term.Clean(string(msg), 120) // may carry relay-side error text
 		return m.wait()
@@ -233,6 +243,12 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	case tickMsg:
 		return tick()
 	case tea.KeyMsg:
+		if m.sound.typing() {
+			return m.typeSource(msg)
+		}
+		if cmd, ok := m.soundKey(msg.String()); ok {
+			return cmd
+		}
 		return m.cameraKey(msg.String())
 	case tea.MouseMsg:
 		return m.mouse(msg)
@@ -494,11 +510,14 @@ func (m *matchModel) view() string {
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	footer := fmt.Sprintf(" q quit · b/esc sources · s stats · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s%s", zoom, m.status, delayNote(m.url))
+	footer := fmt.Sprintf("%s q quit · b/esc sources · s stats · v audio · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s%s", m.soundNote(), zoom, m.status, delayNote(m.url))
 	if m.notice != "" { // first, so a narrow footer keeps it
 		footer = " " + m.notice + " ·" + footer
 	}
 	footer = dim(ansi.Truncate(footer, m.w, ""))
+	if m.sound.typing() {
+		footer = " audio source: " + m.sound.input.View()
+	}
 	return screen + "\n" + footer
 }
 

@@ -38,6 +38,9 @@ type Handlers struct {
 	// Ahead gets the events due in the next Lookahead seconds and the latest
 	// queued state in that window, after every playback step.
 	Ahead func(soon []playback.Soon[Event], future *State)
+	// Delay, if set, is how many extra seconds to hold playback back (to match a
+	// slower video or audio stream); read before every step.
+	Delay func() float64
 }
 
 func sideOf(t common.Team) Side {
@@ -255,6 +258,9 @@ func play(parent, ctx context.Context, p *demoinfocs.Parser, mapName string, tps
 			case <-ctx.Done():
 				return
 			case now := <-t.C:
+				if h.Delay != nil {
+					pb.SetDelay(h.Delay())
+				}
 				frame, evs := pb.Step(float64(now.UnixMilli()) * max(speed, 1)) // a sped-up demo plays out as fast
 				for _, e := range evs {
 					h.Event(e)
