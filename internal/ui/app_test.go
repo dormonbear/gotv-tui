@@ -17,7 +17,10 @@ func TestUpdateNoticeAndKey(t *testing.T) {
 	if _, cmd := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")}); cmd != nil && a.updating {
 		t.Fatal("u updated with no newer release known")
 	}
-	a.Update(latestMsg("0.2.0"))
+	if !strings.Contains(plain(a.View()), "v0.1.0 · checking for updates") {
+		t.Fatal("no version line before the check answers")
+	}
+	a.Update(latestMsg{v: "0.2.0"})
 	if !strings.Contains(plain(a.View()), "v0.2.0 available · press u to update") {
 		t.Fatal("no update notice on the list")
 	}
@@ -56,5 +59,24 @@ func TestAutoRefreshRestartsAfterAMatch(t *testing.T) {
 	}
 	if _, cmd := m.update(autoMsg{m.gen}); cmd == nil {
 		t.Fatal("the current loop stopped")
+	}
+}
+
+func TestVersionLineStates(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	a := New("", nil, 0)
+	a.Version = "0.20.0"
+	a.list, _ = newList(filepath.Join(t.TempDir(), "feeds.json"))
+	a.Update(latestMsg{})
+	if !strings.Contains(plain(a.View()), "v0.20.0 · up to date") {
+		t.Fatal("no 'up to date' when the check found nothing newer")
+	}
+	a.Update(latestMsg{err: errors.New("rate limited")})
+	if !strings.Contains(plain(a.View()), "v0.20.0 · couldn't check for updates") {
+		t.Fatal("a failed check should say so")
+	}
+	a.Version = "dev"
+	if !strings.Contains(plain(a.View()), "source build") {
+		t.Fatal("dev builds don't check")
 	}
 }
