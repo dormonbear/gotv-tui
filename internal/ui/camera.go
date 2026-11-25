@@ -180,8 +180,11 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 		}
 		return nil
 	}
-	if e.Action == tea.MouseActionPress {
-		m.directing, m.focus = false, "" // a click elsewhere, a drag: manual camera
+	if e.Action == tea.MouseActionPress && e.Button == tea.MouseButtonLeft && m.focus != "" {
+		return m.unfollow() // a click elsewhere ends a follow
+	}
+	if e.Action == tea.MouseActionPress && e.Button != tea.MouseButtonLeft {
+		m.directing = false // the wheel: manual zoom (a plain click changes nothing)
 	}
 	switch {
 	case e.Button == tea.MouseButtonLeft && e.Action == tea.MouseActionPress:
@@ -194,6 +197,7 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 		m.drag.on = false
 		return nil
 	case e.Action == tea.MouseActionMotion && m.drag.on:
+		m.directing = false // dragging the map: manual camera
 		x, y := m.pointer(e)
 		m.panCells(x-m.drag.x, y-m.drag.y)
 		m.drag.x, m.drag.y = x, y
@@ -233,6 +237,20 @@ func smoothDamp(cur, target float64, vel *float64, dt float64) float64 {
 	temp := (*vel + omega*change) * dt
 	*vel = (*vel - omega*temp) * e
 	return target + (change+temp)*e
+}
+
+// resumeDirector hands the camera to the director.
+func (m *matchModel) resumeDirector() tea.Cmd {
+	m.directing, m.vel = true, [3]float64{}
+	if m.dir == nil {
+		m.dir = director.New()
+	}
+	m.direct()
+	if m.moving {
+		return nil
+	}
+	m.moving = true
+	return animTick()
 }
 
 func (m *matchModel) toggleDirector() tea.Cmd {

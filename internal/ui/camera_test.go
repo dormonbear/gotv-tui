@@ -315,3 +315,36 @@ func TestRadarAnswersForAnotherMapAreDropped(t *testing.T) {
 		t.Fatal("a failed download should clear loading and schedule a retry")
 	}
 }
+
+func TestDirectorSurvivesPlainClicks(t *testing.T) {
+	m := testMatch(false)
+	m.st = &gotv.State{Players: []gotv.Player{{Name: "s1n", Side: gotv.T, Alive: true, Pos: &gotv.Vec{X: 600, Y: -300}}}}
+	m.view()
+	m.toggleDirector()
+	lv := m.levels[0]
+	ex, ey := lv.sx+1, lv.sy+1 // a map corner, away from the player
+	press := func(x, y int, b tea.MouseButton, a tea.MouseAction) {
+		m.mouse(tea.MouseMsg{X: x, Y: y, Button: b, Action: a})
+	}
+	press(ex, ey, tea.MouseButtonLeft, tea.MouseActionPress)
+	press(ex, ey, tea.MouseButtonLeft, tea.MouseActionRelease)
+	if !m.directing {
+		t.Fatal("a plain click on the map turned the director off")
+	}
+	// follow a player, then click elsewhere: back to the director
+	px, py := lv.r.ToPx(600, -300)
+	press(lv.sx+int(px/2), lv.sy+int(py/4), tea.MouseButtonLeft, tea.MouseActionPress)
+	if m.focus != "s1n" || m.directing {
+		t.Fatalf("follow: focus %q directing %v", m.focus, m.directing)
+	}
+	press(ex, ey, tea.MouseButtonLeft, tea.MouseActionPress)
+	if m.focus != "" || !m.directing {
+		t.Fatal("ending the follow should hand the camera back to the director")
+	}
+	// an actual drag takes the camera
+	press(ex, ey, tea.MouseButtonLeft, tea.MouseActionPress)
+	press(ex+3, ey+1, tea.MouseButtonNone, tea.MouseActionMotion)
+	if m.directing {
+		t.Fatal("dragging the map should take the camera from the director")
+	}
+}

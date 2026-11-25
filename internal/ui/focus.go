@@ -18,8 +18,10 @@ const (
 // focusOn starts following player name (lowercase), or stops if already followed.
 func (m *matchModel) focusOn(name string) tea.Cmd {
 	if m.focus == name {
-		m.focus = ""
-		return nil
+		return m.unfollow()
+	}
+	if m.focus == "" { // remember whether to hand back to the director afterwards
+		m.directBefore = m.directing
 	}
 	m.focus, m.directing = name, false
 	m.zoomTo = math.Max(m.zoomTo, focusZoom)
@@ -28,6 +30,17 @@ func (m *matchModel) focusOn(name string) tea.Cmd {
 	}
 	m.moving = true
 	return animTick()
+}
+
+// unfollow stops following; the director takes over again if it had the camera
+// before the follow began.
+func (m *matchModel) unfollow() tea.Cmd {
+	m.focus = ""
+	if !m.directBefore {
+		return nil
+	}
+	m.directBefore = false
+	return m.resumeDirector()
 }
 
 // focusPos is the followed player's radar position (their death spot once dead).
