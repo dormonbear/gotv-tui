@@ -11,6 +11,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write # build provenance attestations
+  attestations: write
 
 concurrency:
   group: release
@@ -57,6 +59,11 @@ jobs:
             [ "$goos" = windows ] || rm "dist/$asset"
           done
           ls -l dist
+      - name: attest
+        if: steps.version.outputs.next != ''
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*
       - name: publish
         if: steps.version.outputs.next != ''
         env:

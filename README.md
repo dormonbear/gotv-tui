@@ -53,6 +53,8 @@ curl -fsSL https://raw.githubusercontent.com/dormonbear/gotv-tui/main/install.sh
 
 The script picks the binary for your OS and CPU, checks it against the release's
 `SHA256SUMS`, and installs it to `~/.local/bin` (set `GOTV_TUI_INSTALL_DIR` to change).
+Every release asset also carries a GitHub build provenance attestation; to check one
+was built by this repository's CI: `gh attestation verify gotv-tui-darwin-arm64.gz --repo dormonbear/gotv-tui`.
 
 **Windows**
 
@@ -138,6 +140,7 @@ delay, not gotv-tui.
 | `t` | audio sync: press as a kill is called; lines up on the nearest kill |
 | `s` | scoreboard: live state ↔ match stats (+/-, ADR, HS%, KAS%, KPR, utility damage, enemies flashed, 3k/4k/5k) |
 | click a player | follow them (on the map or the scoreboard); click again or elsewhere to stop |
+| `?` | all keys; any key closes it |
 | `b`, `esc` | back to the source list |
 | `q`, `ctrl+c` | quit |
 
