@@ -291,15 +291,15 @@ func roundStatus(st *gotv.State) string {
 	var clock string
 	switch {
 	case st.Over:
-		return bold("match over")
+		return bold("MATCH OVER")
 	case st.SecondsLeft < 0:
 		clock = bold("--:--")
 	case st.Warmup:
-		clock = bold(mmss(st.SecondsLeft)) + dim(" warmup")
+		clock = bold(mmss(st.SecondsLeft)) + dim(" WARMUP")
 	case st.Paused:
-		clock = bold(mmss(st.SecondsLeft)) + dim(" paused")
+		clock = bold(mmss(st.SecondsLeft)) + dim(" PAUSED")
 	case st.Freeze:
-		clock = bold(mmss(st.SecondsLeft)) + dim(" freeze")
+		clock = bold(mmss(st.SecondsLeft)) + dim(" FREEZE")
 	default:
 		clock = bold(mmss(st.SecondsLeft))
 	}
@@ -389,9 +389,9 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			lines = radar.Draw(lv.r, lv.base, m.st, lv.opts)
 		}
 		if titleRows > 0 {
-			name := " upper"
+			name := " UPPER"
 			if lv.lower {
-				name = " lower"
+				name = " LOWER"
 			}
 			lines = append([]string{dim(name)}, lines...)
 		}
@@ -446,7 +446,7 @@ func (m *matchModel) logLines(n int) []string {
 	if n <= 0 { // no room left under the scoreboard
 		return nil
 	}
-	lines := []string{bold("Game log")}
+	lines := []string{bold("GAME LOG")}
 	if len(m.log) == 0 {
 		lines = append(lines, dim("events appear from the moment you connect"))
 	}
