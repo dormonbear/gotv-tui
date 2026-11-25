@@ -96,3 +96,14 @@ func TestRadarSources(t *testing.T) {
 		t.Fatalf("lower level: one fallback only, got %v", s)
 	}
 }
+
+func TestKnownFloor(t *testing.T) {
+	for _, m := range []string{"de_ancient", "de_anubis", "de_inferno", "de_overpass"} {
+		if len(KnownFloor(m)) < 200 {
+			t.Errorf("%s: no shipped floor data", m)
+		}
+	}
+	if len(KnownFloor("de_nowhere")) != 0 {
+		t.Error("unknown map: empty")
+	}
+}

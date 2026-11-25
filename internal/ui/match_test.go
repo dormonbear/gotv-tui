@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
@@ -47,5 +48,23 @@ func TestMissingRadar(t *testing.T) {
 	}
 	if v := ansi.Strip(m.mapView(60, 20, nil)); !strings.Contains(v, "no radar for") {
 		t.Fatalf("map area says %q", v)
+	}
+}
+
+func TestHelpOverlay(t *testing.T) {
+	m := testMatch(false)
+	m.view()
+	key := func(k string) { m.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}) }
+	key("?")
+	if v := ansi.Strip(m.view()); !strings.Contains(v, "KEYS") || !strings.Contains(v, "tap sync") {
+		t.Fatal("? shows the key help")
+	}
+	was := m.directing
+	key("d")
+	if m.help || m.directing != was {
+		t.Fatal("a key closes the help and does nothing else")
+	}
+	if strings.Contains(ansi.Strip(m.view()), "tap sync") {
+		t.Fatal("help still drawn")
 	}
 }

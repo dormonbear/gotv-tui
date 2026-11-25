@@ -63,3 +63,12 @@ func TestWindowsTerminalArgsEscaped(t *testing.T) {
 		t.Fatalf("wt argument %q: an unescaped ; starts a new wt command", got)
 	}
 }
+
+func TestWindowsTerminalArgs(t *testing.T) {
+	has := func(p string) bool { return p == "wt.exe" }
+	_, c := betterTerminal("windows", func(string) string { return "" }, has, []string{`C:\gotv\gotv-tui.exe`, "replay", `C:\my recs\`, "a;b"})
+	got := strings.Join(c.Args[1:], "|")
+	if want := `C:\gotv\gotv-tui.exe|replay|C:\my recs|a\;b|--relaunched`; got != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}
