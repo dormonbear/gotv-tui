@@ -414,6 +414,15 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 				}
 			}
 		}
+		badges := map[[2]int]bool{} // cells holding a player badge
+		for _, pl := range st.Players {
+			if pl.Alive && pl.Pos != nil && here(*pl.Pos) {
+				cx, cy := toCell(*pl.Pos)
+				for i := range []rune(labels[pl.Name]) {
+					badges[[2]int{cx + i, cy}] = true
+				}
+			}
+		}
 		for _, pl := range st.Players {
 			if !pl.Alive || pl.Pos == nil || !here(*pl.Pos) {
 				continue
@@ -427,6 +436,14 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 				c = term.White // the followed player stands out
 			}
 			cx, cy := toCell(*pl.Pos)
+			w := len([]rune(labels[pl.Name]))
+			// badges side by side ("3""2" reads as 32): alternate light and dark
+			if (badges[[2]int{cx - 1, cy}] || badges[[2]int{cx + w, cy}]) && cx%2 == 1 {
+				c = term.Mix(c, term.Black, 0.45)
+				if fg == term.Black {
+					fg = term.White
+				}
+			}
 			for i, r := range []rune(labels[pl.Name]) {
 				putCell(cx+i, cy, glyph{ch: string(r), fg: fg, bg: &c, bold: true}, true)
 			}
