@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -136,6 +137,13 @@ func resolve(ctx context.Context, src string) (string, string, error) {
 	if err := json.Unmarshal(out, &info); err != nil || info.URL == "" {
 		return "", "", errors.New("can't open the stream: no media URL")
 	}
+	if strings.HasSuffix(strings.ToLower(hostOf(info.URL)), ".huya.com") {
+		signed, err := huyaSign(info.URL, time.Now())
+		if err != nil {
+			return "", "", err
+		}
+		info.URL = signed
+	}
 	var h strings.Builder
 	for k, v := range info.Headers {
 		if strings.ContainsAny(k+v, "\r\n") {
@@ -246,4 +254,11 @@ func firstLine(s string) string {
 		s = s[:i]
 	}
 	return s
+}
+
+func hostOf(raw string) string {
+	if u, err := url.Parse(raw); err == nil {
+		return u.Hostname()
+	}
+	return ""
 }
