@@ -2,6 +2,7 @@ package radar
 
 import (
 	"testing"
+	"time"
 
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/term"
@@ -36,5 +37,37 @@ func TestFloorRaised(t *testing.T) {
 	}
 	if f.Raised(gotv.Vec{X: 500, Y: 500, Z: 0}) {
 		t.Fatal("dead players don't teach the floor; unknown ground is never raised")
+	}
+}
+
+func TestLabelsHoldSteady(t *testing.T) {
+	cell := func(v gotv.Vec) (int, int) { return int(v.X), int(v.Y) }
+	here := func(gotv.Vec) bool { return true }
+	now := time.Now()
+	o := Opts{Names: true, Labels: LabelMemory{}, Nums: map[string]int{"alpha": 1, "bravo": 2}}
+	alpha := func(bravoX float64, after time.Duration) string {
+		o.Now = now.Add(after)
+		ps := []gotv.Player{
+			{Name: "alpha", Alive: true, Pos: &gotv.Vec{X: 10, Y: 5}},
+			{Name: "bravo", Alive: true, Pos: &gotv.Vec{X: bravoX, Y: 5}},
+		}
+		return playerLabels(ps, o, here, cell, 80, 4)["alpha"]
+	}
+	if alpha(30, 0) == "1" {
+		t.Fatal("room for the name")
+	}
+	// bravo stops right after alpha's name (no gap left): within the hold the name stays
+	if alpha(16, 100*time.Millisecond) == "1" {
+		t.Fatal("name dropped at once when the gap closed")
+	}
+	if alpha(16, 2*time.Second) != "1" {
+		t.Fatal("after the hold, a name with no gap goes back to the number")
+	}
+	// bravo leaves again: the number holds for a moment instead of popping back
+	if alpha(30, 2100*time.Millisecond) != "1" {
+		t.Fatal("name popped back within the hold")
+	}
+	if alpha(30, 3*time.Second) == "1" {
+		t.Fatal("after the hold the name returns")
 	}
 }
