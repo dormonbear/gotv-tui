@@ -304,12 +304,16 @@ func roundStatus(st *gotv.State) string {
 	switch {
 	case st.Over:
 		return bold("MATCH OVER")
+	case st.Paused: // a yellow badge, with the team's timeout counting down
+		label := st.Pause
+		if st.PauseLeft >= 0 {
+			label += " " + mmss(math.Ceil(st.PauseLeft))
+		}
+		clock = bold(mmss(max(0, st.SecondsLeft))) + "  \x1b[43;30;1m " + label + " " + reset
 	case st.SecondsLeft < 0:
 		clock = bold("--:--")
 	case st.Warmup:
 		clock = bold(mmss(st.SecondsLeft)) + dim(" WARMUP")
-	case st.Paused:
-		clock = bold(mmss(st.SecondsLeft)) + dim(" PAUSED")
 	case st.Freeze:
 		clock = bold(mmss(st.SecondsLeft)) + dim(" FREEZE")
 	default:

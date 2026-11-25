@@ -161,9 +161,8 @@ func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
 	if rules := gs.Rules(); rules != nil {
 		s.History = history(rules.Entity(), played)
 		e := rules.Entity()
-		if v, ok := prop(e, "m_pGameRules.m_bGamePaused"); ok {
-			s.Paused = v.BoolVal()
-		}
+		s.Pause, s.PauseLeft = pause(e)
+		s.Paused = s.Pause != ""
 		start, ok1 := prop(e, "m_pGameRules.m_fRoundStartTime")
 		length, ok2 := prop(e, "m_pGameRules.m_iRoundTime")
 		if ok1 && ok2 {
@@ -208,4 +207,35 @@ func bombState(gs *demoinfocs.GameState, now float64) *Bomb {
 		return nil
 	}
 	return &Bomb{Pos: *vec(pos), State: BombDropped, SecondsLeft: -1, DefuseLeft: -1}
+}
+
+// pause reads which pause is on, if any. Team timeouts (tactical, or technical
+// when m_bTechnicalTimeOut is set) count down the team's remaining time; the
+// plain pause flags don't come with a clock.
+func pause(e *st.Entity) (string, float64) {
+	on := func(name string) bool {
+		v, ok := prop(e, "m_pGameRules."+name)
+		return ok && v.BoolVal()
+	}
+	left := func(name string) float64 {
+		if v, ok := prop(e, "m_pGameRules."+name); ok {
+			return max(0, float64(v.Float()))
+		}
+		return -1
+	}
+	kind := "TIMEOUT"
+	if on("m_bTechnicalTimeOut") {
+		kind = "TECH PAUSE"
+	}
+	switch {
+	case on("m_bTerroristTimeOutActive"):
+		return "T " + kind, left("m_flTerroristTimeOutRemaining")
+	case on("m_bCTTimeOutActive"):
+		return "CT " + kind, left("m_flCTTimeOutRemaining")
+	case on("m_bTechnicalTimeOut"):
+		return "TECH PAUSE", -1
+	case on("m_bGamePaused"), on("m_bServerPaused"), on("m_bMatchWaitingForResume"):
+		return "PAUSED", -1
+	}
+	return "", -1
 }
