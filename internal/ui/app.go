@@ -2,6 +2,7 @@
 package ui
 
 import (
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -108,7 +109,15 @@ func (a *App) start() tea.Cmd {
 	return cmd
 }
 
+// mouseJunk matches what's left of a mouse report Bubble Tea couldn't parse: with
+// pixel reports, a click in another split pane reaches us with coordinates outside
+// ours (negative), which comes through as alt+[ followed by "<0;2256;-6M".
+var mouseJunk = regexp.MustCompile(`^<?\d+;-?\d+;-?\d+[Mm]$`)
+
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if k, ok := msg.(tea.KeyMsg); ok && (k.String() == "alt+[" || mouseJunk.MatchString(string(k.Runes))) {
+		return a, nil
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.w, a.h = msg.Width, msg.Height

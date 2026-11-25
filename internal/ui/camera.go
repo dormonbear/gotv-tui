@@ -128,7 +128,12 @@ func (m *matchModel) cameraKey(k string) tea.Cmd {
 			return nil
 		}
 	}
-	m.directing, m.focus = false, "" // any manual move takes the camera back
+	switch k {
+	case "+", "=", "-", "_", "0", "left", "h", "right", "l", "up", "k", "down", "j":
+		m.directing, m.focus = false, "" // a manual move takes the camera back
+	default:
+		return nil // not a camera key: the director (or follow) carries on
+	}
 	v := m.camera()
 	cx, cy := v.Center()
 	switch k {
