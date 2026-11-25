@@ -131,7 +131,36 @@ const (
 var (
 	columns        = fmt.Sprintf("%-14s %6s   K  D  A%6s  kit %-11sutil", "hp", "$", "ADR", "weapon")
 	compactColumns = fmt.Sprintf(" %4s %6s%3s%3s weapon", "hp", "$", "K", "D")
+	// the stats view (s): match totals instead of the live state
+	statsColumns        = fmt.Sprintf("%3s%3s%3s %4s %5s %4s %4s %4s %4s %3s  %s", "K", "D", "A", "+/-", "ADR", "HS%", "KAS", "KPR", "UD", "EF", "3k 4k 5k")
+	compactStatsColumns = fmt.Sprintf("%3s%3s %4s %5s %4s %4s", "K", "D", "+/-", "ADR", "HS%", "KAS")
 )
+
+// pct is part/whole as a whole percentage, "-" when there is nothing to divide by.
+func pct(part, whole int) string {
+	if whole <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%d%%", part*100/whole)
+}
+
+// statsRow is the stats view of a player after their badge.
+func statsRow(p gotv.Player, compact bool) string {
+	s := p.Stats
+	hs, kas := pct(s.HSKills, p.Kills), pct(s.KASRounds, s.Rounds)
+	if compact {
+		return fmt.Sprintf("%s %3d%3d %+4d %5.0f %4s %4s", pad(p.Name, 10), p.Kills, p.Deaths, p.Kills-p.Deaths, p.ADR, hs, kas)
+	}
+	multi := func(n int) string {
+		if n == 0 {
+			return dim(" · ")
+		}
+		return fmt.Sprintf("%2d ", n)
+	}
+	return fmt.Sprintf("%s %3d%3d%3d %+4d %5.0f %4s %4s %4.2f %4d %3d  %s%s%s", pad(p.Name, 12), p.Kills, p.Deaths, p.Assists,
+		p.Kills-p.Deaths, p.ADR, hs, kas, float64(p.Kills)/float64(max(1, s.Rounds)), s.UtilDamage, s.Flashed,
+		multi(s.Multi[0]), multi(s.Multi[1]), multi(s.Multi[2]))
+}
 
 func title(side gotv.Side, t gotv.Team, w int) string {
 	tail := fmt.Sprintf(" %d", t.Score)
@@ -168,12 +197,14 @@ func pad(s string, w int) string { // pad/cut a plain string to exactly w cells
 // TeamTable renders the title row and one row per player of side.
 // The followed player's row (focus, lowercase) is framed; see framed. compact keeps
 // only number, name, hp, money, K/D and weapon, for narrow screens.
-func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[string]int, focus string, compact bool) []string {
+func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[string]int, focus string, compact, stats bool) []string {
 	c := sideColor(side)
-	out := []string{term.Fg(c) + boldOn + title(side, t, titleW) + reset + dim(columns)}
+	head := map[[2]bool]string{{false, false}: columns, {true, false}: compactColumns, {false, true}: statsColumns, {true, true}: compactStatsColumns}[[2]bool{compact, stats}]
+	tw := titleW
 	if compact {
-		out[0] = term.Fg(c) + boldOn + title(side, t, compactTitleW) + reset + dim(compactColumns)
+		tw = compactTitleW
 	}
+	out := []string{term.Fg(c) + boldOn + title(side, t, tw) + reset + dim(head)}
 	num := func(p gotv.Player) int {
 		if n, ok := nums[strings.ToLower(p.Name)]; ok {
 			return n
@@ -225,7 +256,9 @@ func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[stri
 			row = fmt.Sprintf("%s %s %s %6s %3d%3d %s", badge, pad(p.Name, 10), hp, fmt.Sprintf("$%d", p.Money), p.Kills, p.Deaths, gun)
 			width = compactWidth
 		}
-		if !p.Alive {
+		if stats { // totals: a dead player's numbers matter as much as a live one's
+			row = badge + " " + statsRow(p, compact)
+		} else if !p.Alive {
 			row = dimOn + row + reset
 		}
 		if focused {

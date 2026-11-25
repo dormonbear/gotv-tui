@@ -108,6 +108,10 @@ func (m *matchModel) pointer(e tea.MouseMsg) (float64, float64) {
 }
 
 func (m *matchModel) cameraKey(k string) tea.Cmd {
+	if k == "s" { // scoreboard: live state <-> match stats
+		m.stats = !m.stats
+		return nil
+	}
 	if m.assets == nil {
 		return nil
 	}
