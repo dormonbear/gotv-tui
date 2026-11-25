@@ -152,9 +152,15 @@ func (m *matchModel) cameraKey(k string) tea.Cmd {
 
 // drag pans so the radar point grabbed stays under the pointer.
 type drag struct {
-	on   bool
-	x, y float64 // last pointer position, in cells
+	on     bool
+	moving bool    // past the threshold: a real drag, not a click with a shaky hand
+	x, y   float64 // last pointer position, in cells
+	x0, y0 float64 // where the press was
 }
+
+// dragStart is how far (in cells) the pointer must move before a press becomes a
+// drag. With pixel mouse reports a click alone often moves a pixel or two.
+const dragStart = 1.0
 
 func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 	if m.assets == nil {
@@ -190,15 +196,21 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 	case e.Button == tea.MouseButtonLeft && e.Action == tea.MouseActionPress:
 		x, y := m.pointer(e)
 		if _, _, ok := m.radarAt(x, y); ok {
-			m.drag = drag{on: true, x: x, y: y}
+			m.drag = drag{on: true, x: x, y: y, x0: x, y0: y}
 		}
 		return nil
 	case e.Action == tea.MouseActionRelease:
 		m.drag.on = false
 		return nil
 	case e.Action == tea.MouseActionMotion && m.drag.on:
-		m.directing = false // dragging the map: manual camera
 		x, y := m.pointer(e)
+		if !m.drag.moving {
+			if math.Hypot(x-m.drag.x0, y-m.drag.y0) < dragStart {
+				return nil // still a click
+			}
+			m.drag.moving, m.drag.x, m.drag.y = true, m.drag.x0, m.drag.y0
+		}
+		m.directing = false // dragging the map: manual camera
 		m.panCells(x-m.drag.x, y-m.drag.y)
 		m.drag.x, m.drag.y = x, y
 		return nil
