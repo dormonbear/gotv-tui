@@ -32,6 +32,7 @@ type Player struct {
 	Helmet  bool
 	Defuser bool
 	Money   int
+	Equip   int // value of what they carry
 	Kills   int
 	Deaths  int
 	Assists int
