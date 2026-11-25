@@ -444,9 +444,9 @@ const (
 // shows which player (it always starts at row 0).
 func (m *matchModel) panel(nums map[string]int, compact bool) []string {
 	if m.st == nil {
-		return waiting(time.Now(), m.status)
+		return append([]string{m.withBadge("")}, waiting(time.Now(), m.status)...)
 	}
-	lines := []string{header(m.st)}
+	lines := []string{m.withBadge(header(m.st))}
 	if h := historyLine(m.st.History, m.rounds, m.st.Round, m.panelW); h != "" {
 		lines = append(lines, h)
 	}
@@ -539,8 +539,7 @@ func (m *matchModel) view() string {
 	if m.notice != "" { // first, so a narrow footer keeps it
 		footer = " " + m.notice + " ·" + footer
 	}
-	badge := linkBadge(m.link, m.lastData, time.Now())
-	footer = badge + dim(ansi.Truncate(footer, m.w-ansi.StringWidth(badge), ""))
+	footer = dim(ansi.Truncate(footer, m.w, ""))
 	if m.sound.typing() {
 		footer = " audio source: " + m.sound.input.View()
 	}
@@ -622,4 +621,15 @@ func (m *matchModel) labelMemory(lower bool) radar.LabelMemory {
 		m.labelMem[i] = radar.LabelMemory{}
 	}
 	return m.labelMem[i]
+}
+
+// withBadge puts the connection badge at the right end of a panel row.
+func (m *matchModel) withBadge(row string) string {
+	badge := linkBadge(m.link, m.lastData, time.Now())
+	room := m.panelW - ansi.StringWidth(badge)
+	if badge == "" || room < 1 {
+		return row
+	}
+	row = ansi.Truncate(row, room, "")
+	return row + strings.Repeat(" ", room-ansi.StringWidth(row)) + badge
 }
