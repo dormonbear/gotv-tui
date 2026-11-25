@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"errors"
 	"image"
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -297,5 +299,19 @@ func TestDirectorCameraHasNoVelocityJumps(t *testing.T) {
 		if math.Abs(steps[i]-steps[i-1]) > 0.2*top {
 			t.Fatalf("velocity jump at frame %d: %.2f -> %.2f (max %.2f)", i, steps[i-1], steps[i], top)
 		}
+	}
+}
+
+func TestRadarAnswersForAnotherMapAreDropped(t *testing.T) {
+	m := testMatch(false)
+	m.loading = "de_nuke"
+	other := &radar.Assets{Map: "de_dust2", Upper: m.assets.Upper}
+	m.update(radarMsg{"de_dust2", other, nil}) // a slow download from the previous match
+	if m.assets.Map != "de_test" {
+		t.Fatalf("took a radar nobody asked for: %s", m.assets.Map)
+	}
+	m.update(radarMsg{"de_nuke", nil, errors.New("timeout")})
+	if m.loading != "" || !m.retryAt.After(time.Now()) {
+		t.Fatal("a failed download should clear loading and schedule a retry")
 	}
 }

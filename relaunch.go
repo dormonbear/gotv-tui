@@ -55,7 +55,11 @@ func betterTerminal(goos string, getenv func(string) string, has func(string) bo
 		if getenv("WT_SESSION") != "" || !has("wt.exe") { // already in Windows Terminal, or none
 			return "", nil
 		}
-		return "Windows Terminal", exec.Command("wt.exe", cmd...)
+		esc := make([]string, len(cmd))
+		for i, a := range cmd { // wt.exe splits its command line on ";" even inside an argument
+			esc[i] = strings.ReplaceAll(a, ";", `\;`)
+		}
+		return "Windows Terminal", exec.Command("wt.exe", esc...)
 	}
 	return "", nil
 }

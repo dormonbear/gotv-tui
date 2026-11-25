@@ -25,7 +25,7 @@ const peekTimeout = 15 * time.Second
 func Peek(ctx context.Context, url string) (*Summary, error) {
 	ctx, cancel := context.WithTimeout(ctx, peekTimeout)
 	defer cancel()
-	r, err := cstv.NewReader(ctx, url)
+	r, err := cstv.NewReader(ctx, url, cstv.WithHTTPClient(relayClient))
 	if err != nil {
 		return nil, err
 	}
@@ -46,10 +46,10 @@ func Peek(ctx context.Context, url string) (*Summary, error) {
 		phase := gs.GamePhase()
 		s := &Summary{Round: gs.TotalRoundsPlayed() + 1, Over: phase == common.GamePhaseGameEnded || phase == common.GamePhaseGameOver}
 		if ct := gs.TeamCounterTerrorists(); ct != nil {
-			s.CT = Team{Name: name(ct.ClanName(), "CT"), Score: ct.Score()}
+			s.CT = Team{Name: name(clean(ct.ClanName()), "CT"), Score: ct.Score()}
 		}
 		if t := gs.TeamTerrorists(); t != nil {
-			s.T = Team{Name: name(t.ClanName(), "T"), Score: t.Score()}
+			s.T = Team{Name: name(clean(t.ClanName()), "T"), Score: t.Score()}
 		}
 		out = s
 		cancel()

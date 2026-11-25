@@ -108,6 +108,14 @@ func (a *App) quit() tea.Cmd {
 	if a.match != nil {
 		a.match.close()
 	}
+	// images go now, while the TUI's screen is still up: afterwards they would be
+	// drawn over (iTerm2/Sixel) or deleted from (kitty) the user's shell screen
+	if a.out != nil {
+		a.out.SetOverlay(nil)
+		if a.gfx == term.Kitty {
+			term.DeleteImages(a.out)
+		}
+	}
 	return tea.Quit
 }
 

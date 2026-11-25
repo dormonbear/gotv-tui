@@ -92,8 +92,8 @@ var client = &http.Client{Timeout: 20 * time.Second}
 // valid rejects a truncated or wrong download (e.g. an HTML error page) so it is
 // neither used nor cached.
 func valid(name string, b []byte) bool {
-	if strings.HasSuffix(name, ".png") {
-		_, err := png.DecodeConfig(bytes.NewReader(b))
+	if strings.HasSuffix(name, ".png") { // full decode: a cut-off file can have a fine header
+		_, err := png.Decode(bytes.NewReader(b))
 		return err == nil
 	}
 	return ParseOverview(string(b)).Scale > 0
@@ -140,7 +140,13 @@ func decode(b []byte) (*image.NRGBA, error) {
 	return out, nil
 }
 
+// mapNameRe is what a map name may look like: it becomes a file name and a URL.
+var mapNameRe = regexp.MustCompile(`^[a-z0-9_]{1,40}$`)
+
 func Load(mapName string) (*Assets, error) {
+	if !mapNameRe.MatchString(mapName) {
+		return nil, fmt.Errorf("unexpected map name %q", mapName)
+	}
 	txt, err := cached(mapName + ".txt")
 	if err != nil {
 		return nil, fmt.Errorf("radar %s: %w", mapName, err)

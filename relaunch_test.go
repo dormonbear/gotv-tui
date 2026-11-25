@@ -55,3 +55,11 @@ func TestBetterTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsTerminalArgsEscaped(t *testing.T) {
+	_, c := betterTerminal("windows", func(string) string { return "" }, func(string) bool { return true },
+		[]string{"gotv-tui", "https://x/a;new-tab cmd"})
+	if got := c.Args[2]; got != `https://x/a\;new-tab cmd` {
+		t.Fatalf("wt argument %q: an unescaped ; starts a new wt command", got)
+	}
+}

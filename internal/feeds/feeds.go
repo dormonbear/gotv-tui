@@ -2,14 +2,18 @@
 package feeds
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/dormonbear/gotv-tui/internal/term"
 )
 
 type Feed struct {
@@ -115,8 +119,12 @@ func StateOf(s *Sync) State {
 var ErrWaiting = errors.New("waiting for the broadcast to start")
 
 // FetchSync reads <url>/sync. A 405 means the relay is between matches.
-func FetchSync(client *http.Client, url string) (*Sync, error) {
-	r, err := client.Get(url + "/sync")
+func FetchSync(ctx context.Context, client *http.Client, url string) (*Sync, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url+"/sync", nil)
+	if err != nil {
+		return nil, err
+	}
+	r, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +136,10 @@ func FetchSync(client *http.Client, url string) (*Sync, error) {
 		return nil, errors.New(r.Status)
 	}
 	var s Sync
-	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&s); err != nil {
 		return nil, err
 	}
+	s.Map = term.Clean(s.Map, 40) // shown on screen and used for the radar's file name
 	return &s, nil
 }
 
@@ -141,7 +150,7 @@ type Status struct {
 }
 
 func Probe(f Feed) Status {
-	s, err := FetchSync(&http.Client{Timeout: 8 * time.Second}, f.URL)
+	s, err := FetchSync(context.Background(), &http.Client{Timeout: 8 * time.Second}, f.URL)
 	switch {
 	case errors.Is(err, ErrWaiting):
 		return Status{Feed: f, State: Waiting}

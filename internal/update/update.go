@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -104,9 +105,15 @@ func Run(current string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tmp := target + ".new"
-	if err := writeGunzip(tmp, bytes.NewReader(gz)); err != nil {
-		os.Remove(tmp)
+	// a private temp file beside the target: concurrent updates can't share it, and
+	// the final rename stays on one filesystem
+	f, err := os.CreateTemp(filepath.Dir(target), ".gotv-tui-update-*")
+	if err != nil {
+		return "", err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp) // no-op once renamed into place
+	if err := writeGunzip(f, bytes.NewReader(gz)); err != nil {
 		return "", err
 	}
 	// a running .exe can't be overwritten on Windows, but it can be renamed away
@@ -117,18 +124,22 @@ func Run(current string) (string, error) {
 		}
 	}
 	if err := os.Rename(tmp, target); err != nil {
+		if runtime.GOOS == "windows" {
+			os.Rename(target+".old", target) // put the working binary back
+		}
 		return "", err
 	}
 	return fmt.Sprintf("Updated v%s -> v%s.", strings.TrimPrefix(current, "v"), latest), nil
 }
 
-func writeGunzip(path string, r io.Reader) error {
+func writeGunzip(f *os.File, r io.Reader) error {
 	z, err := gzip.NewReader(r)
 	if err != nil {
+		f.Close()
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-	if err != nil {
+	if err := f.Chmod(0o755); err != nil {
+		f.Close()
 		return err
 	}
 	if _, err := io.Copy(f, z); err != nil {

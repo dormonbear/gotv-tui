@@ -282,3 +282,11 @@ func TestValidRejectsBadDownloads(t *testing.T) {
 		t.Fatal("overview validation")
 	}
 }
+
+func TestLoadRejectsOddMapNames(t *testing.T) {
+	for _, n := range []string{"../../.ssh/id_rsa", "de_nuke/../x", "", "DE NUKE"} {
+		if _, err := Load(n); err == nil {
+			t.Errorf("Load(%q) accepted", n)
+		}
+	}
+}

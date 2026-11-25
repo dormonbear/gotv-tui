@@ -72,12 +72,8 @@ func main() {
 		opts = append(opts, tea.WithOutput(images))
 	}
 	_, err := tea.NewProgram(ui.New(url, images, gfx), opts...).Run()
-	if images != nil {
-		images.SetOverlay(nil)
-		if gfx == term.Kitty {
-			term.DeleteImages(images)
-			term.PixelMouse(images, false)
-		}
+	if images != nil && gfx == term.Kitty {
+		term.PixelMouse(images, false) // images were removed by the app on quit
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
