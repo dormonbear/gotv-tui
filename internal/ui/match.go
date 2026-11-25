@@ -420,7 +420,7 @@ const (
 // shows which player (it always starts at row 0).
 func (m *matchModel) panel(nums map[string]int, compact bool) []string {
 	if m.st == nil {
-		return []string{dim(" " + m.status + " · waiting for game state...")}
+		return waiting(time.Now(), m.status)
 	}
 	lines := []string{header(m.st)}
 	if h := historyLine(m.st.History, m.rounds, m.st.Round, m.panelW); h != "" {
@@ -551,20 +551,38 @@ func (m *matchModel) directorSwitch(width int) string {
 	}
 	if m.focus != "" {
 		sw = switchFocus.Render(" ◎ FOLLOWING " + m.focusName() + " ")
-		note = dim(" click them again or elsewhere to stop")
 		m.switchW = 0 // following, not the director: the bar isn't a switch now
 		return ansi.Truncate(pre+sw+note, width, "")
 	}
 	if m.directing {
 		sw = switchOn.Render(" ● DIRECTOR ON ")
-		note = " whole map"
-		if m.shot != nil {
-			note = " " + m.shot.Reason
-		}
 	} else {
 		sw = switchOff.Render(" ○ DIRECTOR OFF ")
-		note = dim(" press d or click")
 	}
 	m.switchW = lipgloss.Width(sw)
 	return ansi.Truncate(pre+sw+note, width, "")
+}
+
+var waitQuips = []string{
+	"warming up", "buying utility", "checking crosshairs", "tactical timeout",
+	"waiting for the coach", "fixing a stuck peripheral", "eco round for the casters",
+}
+
+// waiting animates the empty match screen: a T carrying the bomb runs up and
+// down a lane, under a rotating line of quips. Driven by the 250 ms tick.
+func waiting(now time.Time, status string) []string {
+	const lane = 28
+	f := int(now.UnixMilli() / 250)
+	pos := f % (2 * lane)
+	runner := "▶✱"
+	if pos >= lane {
+		pos, runner = 2*lane-1-pos, "✱◀"
+	}
+	track := strings.Repeat("·", pos) + runner + strings.Repeat("·", lane-pos)
+	return []string{
+		"",
+		" " + lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(track),
+		dim(" " + waitQuips[f/12%len(waitQuips)] + strings.Repeat(".", f%4)),
+		dim(" " + status),
+	}
 }
