@@ -32,3 +32,29 @@ func TestUpdateNoticeAndKey(t *testing.T) {
 		t.Fatal("a failed update should say so and keep running")
 	}
 }
+
+func TestStaleMatchMessagesAreDropped(t *testing.T) {
+	a := New("", nil, 0)
+	old, cur := testMatch(false), testMatch(false)
+	a.match = cur
+	a.Update(matchMsg{old, statusMsg("from the closed match")})
+	if cur.status == "from the closed match" {
+		t.Fatal("a closed match's message reached the open one")
+	}
+	a.Update(matchMsg{cur, statusMsg("ours")})
+	if cur.status != "ours" {
+		t.Fatal("the open match's own message was dropped")
+	}
+}
+
+func TestAutoRefreshRestartsAfterAMatch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m, _ := newList(filepath.Join(t.TempDir(), "feeds.json"))
+	m.resume() // back from a match: new loop
+	if _, cmd := m.update(autoMsg{0}); cmd != nil {
+		t.Fatal("the old loop's tick kept a second loop going")
+	}
+	if _, cmd := m.update(autoMsg{m.gen}); cmd == nil {
+		t.Fatal("the current loop stopped")
+	}
+}

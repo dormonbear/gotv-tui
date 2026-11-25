@@ -22,6 +22,7 @@ type App struct {
 	Version  string // running version; "dev" skips the update check
 	latest   string // newer release, once the check found one
 	updating bool
+	quitting bool
 	notice   string // update result
 	Restart  bool   // updated in place: main starts the new binary
 }
@@ -97,6 +98,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.list.w = a.w
 		}
 		return a, nil
+	case matchMsg:
+		if a.match == nil || msg.m != a.match {
+			return a, nil // from a match that was closed meanwhile
+		}
+		return a, a.match.update(msg.msg)
 	case latestMsg:
 		a.latest = string(msg)
 		return a, nil
@@ -144,7 +150,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.list.w = a.w
 					return a, cmd
 				}
-				return a, a.list.refresh() // states change while a match is open
+				return a, a.list.resume() // states change while a match is open
 			}
 			return a, a.match.update(msg)
 		}
@@ -169,6 +175,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) quit() tea.Cmd {
+	a.quitting = true // the final frame must not paint images again
 	if a.match != nil {
 		a.match.close()
 	}
@@ -184,6 +191,9 @@ func (a *App) quit() tea.Cmd {
 }
 
 func (a *App) View() string {
+	if a.quitting {
+		return ""
+	}
 	hint := a.updateHint()
 	if a.match != nil {
 		a.match.notice = hint

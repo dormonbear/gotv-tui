@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/term"
 )
@@ -52,23 +50,26 @@ func historyLine(rs []roundResult, current, width int) string {
 	if last < 1 {
 		return ""
 	}
-	var b strings.Builder
-	b.WriteString(dim(" rounds "))
+	var cells []string // one per round, plus a gap after each half
 	for n := 1; n <= last; n++ {
 		if r, ok := byN[n]; ok {
 			g := reasonGlyph[r.reason]
 			if g == "" {
 				g = "•"
 			}
-			b.WriteString(term.Fg(sideColor(r.winner)) + g + reset)
+			cells = append(cells, term.Fg(sideColor(r.winner))+g+reset)
 		} else {
-			b.WriteString(dim("-"))
+			cells = append(cells, dim("-"))
 		}
 		if n == 12 || (n > 24 && (n-24)%3 == 0) {
-			b.WriteString(" ")
+			cells = append(cells, " ")
 		}
 	}
-	return ansi.Truncate(b.String(), width, "")
+	const label = " rounds "
+	if room := width - len(label); len(cells) > room { // keep the newest rounds
+		cells = cells[len(cells)-max(room, 0):]
+	}
+	return dim(label) + strings.Join(cells, "")
 }
 
 // buyType classifies a team's equipment value the way HLTV does.

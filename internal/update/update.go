@@ -168,8 +168,10 @@ func Run(current string) (string, error) {
 		}
 	}
 	if err := os.Rename(tmp, target); err != nil {
-		if runtime.GOOS == "windows" {
-			os.Rename(target+".old", target) // put the working binary back
+		if runtime.GOOS == "windows" { // put the working binary back
+			if rerr := os.Rename(target+".old", target); rerr != nil {
+				return "", fmt.Errorf("%w; restoring the old binary also failed (%v): rename %s.old back to %s", err, rerr, target, target)
+			}
 		}
 		return "", err
 	}
