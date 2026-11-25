@@ -401,8 +401,16 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			if lower {
 				img = a.Lower
 			}
-			r := radar.Rasterize(img, a.Overview, view, (levelW-2)*2, (levelH-2-titleRows)*4, m.aspect)
-			m.levels = append(m.levels, &levelMap{lower: lower, w: levelW, h: levelH, view: view, r: r, base: radar.BuildBase(r, m.zoom)})
+			cw, ch := (levelW-2)*2, (levelH-2-titleRows)*4
+			lv := &levelMap{lower: lower, w: levelW, h: levelH, view: view}
+			if m.images() || m.wholeFrames() { // the terminal draws the map: skip the text one (~17 ms a frame while the camera moves)
+				lv.r = radar.Mapping(a.Overview, view, cw, ch, m.aspect)
+				lv.base = radar.Size(lv.r)
+			} else {
+				lv.r = radar.Rasterize(img, a.Overview, view, cw, ch, m.aspect)
+				lv.base = radar.BuildBase(lv.r, m.zoom)
+			}
+			m.levels = append(m.levels, lv)
 		}
 	}
 	var boxes []string

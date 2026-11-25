@@ -194,6 +194,7 @@ func play(parent, ctx context.Context, p *demoinfocs.Parser, mapName string, tps
 	tick := func() int { return gs.IngameTick() }
 	emit := func(e Event) { pb.PushEvent(tick(), e) }
 	smokes := map[int]Vec{} // live smoke clouds by projectile entity id
+	traded, deaths := trades{}, []death(nil)
 
 	last := -sampleTicks
 	var wall0 time.Time
@@ -213,7 +214,7 @@ func play(parent, ctx context.Context, p *demoinfocs.Parser, mapName string, tps
 		}
 		if t := tick(); t >= last+sampleTicks {
 			last = t
-			pb.PushFrame(t, snapshot(p, mapName, smokes))
+			pb.PushFrame(t, snapshot(p, mapName, smokes, traded))
 		}
 	})
 	p.RegisterEventHandler(func(e events.Kill) {
@@ -230,10 +231,12 @@ func play(parent, ctx context.Context, p *demoinfocs.Parser, mapName string, tps
 		if e.Killer != nil {
 			ev.From = vec(e.Killer.Position())
 		}
+		deaths = traded.record(deaths, e, gs.TotalRoundsPlayed(), p.CurrentTime())
 		emit(ev)
 	})
 	p.RegisterEventHandler(func(events.RoundStart) {
 		clear(smokes)
+		deaths = deaths[:0]
 		emit(Event{Kind: EvRoundStart, Round: gs.TotalRoundsPlayed() + 1})
 	})
 	p.RegisterEventHandler(func(e events.RoundEnd) {

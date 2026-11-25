@@ -30,7 +30,7 @@ No game client, no account, no scraping: one ~4 MB binary for macOS, Linux and W
   the bomb after the plant.
 - **Follow a player**: click them on the map or the scoreboard.
 - **Scoreboard**: HP, money, K/D/A, ADR, armor and kit, weapon and grenades, and the
-  round clock with bomb and defuse timers; press `s` for match stats (HS%, KAS%,
+  round clock with bomb and defuse timers; press `s` for match stats (HS%, KAST%,
   KPR, utility damage, enemies flashed, multi-kills). Team economy and round history.
 - **Game log**: kills with assists, flash assists, headshots, wallbangs and
   through-smoke kills; plants, defuses and round results.
@@ -138,7 +138,7 @@ delay, not gotv-tui.
 | `v` | audio: play a stream's sound along (a stream or media URL, or `huya <room>`, `bili <room>`, `twitch <name>`; empty stops) |
 | `[` `]` / `{` `}` | audio sync: shift by 1 s / 0.1 s |
 | `t` | audio sync: press as a kill is called; lines up on the nearest kill |
-| `s` | scoreboard: live state ↔ match stats (+/-, ADR, HS%, KAS%, KPR, utility damage, enemies flashed, 3k/4k/5k) |
+| `s` | scoreboard: live state ↔ match stats (+/-, ADR, HS%, KAST% (trades counted from when you connect), KPR, utility damage, enemies flashed, 3k/4k/5k) |
 | click a player | follow them (on the map or the scoreboard); click again or elsewhere to stop |
 | `?` | all keys; any key closes it |
 | `b`, `esc` | back to the source list |
