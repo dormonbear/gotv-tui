@@ -44,7 +44,7 @@ func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
 		if ts == nil {
 			return Team{Name: fallback}
 		}
-		n := ts.ClanName()
+		n := clean(ts.ClanName())
 		if n == "" {
 			n = fallback
 		}
@@ -80,7 +80,7 @@ func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
 			pos = vec(pl.Position())
 		}
 		s.Players = append(s.Players, Player{
-			Name: pl.Name, Side: side, Pos: pos, Yaw: float64(pl.ViewDirectionX()),
+			Name: clean(pl.Name), Side: side, Pos: pos, Yaw: float64(pl.ViewDirectionX()),
 			Alive: pl.IsAlive(), HP: pl.Health(), Armor: pl.Armor(), Helmet: pl.HasHelmet(), Defuser: pl.HasDefuseKit(),
 			Money: pl.Money(), Kills: pl.Kills(), Deaths: pl.Deaths(), Assists: pl.Assists(), ADR: adr(pl, played),
 			Gun: gun, Nades: nades, HasBomb: bomb,

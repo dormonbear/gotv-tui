@@ -49,3 +49,21 @@ func TestAheadPeeksAtTheQueue(t *testing.T) {
 		t.Fatalf("Ahead(4) = %+v", ev)
 	}
 }
+
+func TestPendingUntilPlayedOut(t *testing.T) {
+	p := New[int, string](64, 4, 8)
+	for i := 0; i <= 640; i += 4 { // a burst, then the stream ends
+		p.PushFrame(i, i)
+	}
+	p.PushEvent(630, "last kill")
+	var got []string
+	now := 0.0
+	for i := 0; i < 200 && p.Pending(); i++ {
+		_, evs := p.Step(now)
+		got = append(got, evs...)
+		now += 62.5
+	}
+	if p.Pending() || len(got) != 1 {
+		t.Fatalf("not played out: pending=%v events=%v", p.Pending(), got)
+	}
+}

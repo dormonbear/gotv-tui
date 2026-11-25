@@ -38,7 +38,10 @@ if [ -z "$sum" ] || [ "$sum" != "$got" ]; then
   echo "gotv-tui: checksum mismatch for $asset.gz (expected '$sum', got '$got')" >&2
   rm -f "$tmp.gz"; exit 1
 fi
-gunzip -c "$tmp.gz" > "$tmp" && rm -f "$tmp.gz"
+if ! gunzip -c "$tmp.gz" > "$tmp"; then
+  echo "gotv-tui: could not unpack $asset.gz" >&2; exit 1
+fi
+rm -f "$tmp.gz"
 chmod 755 "$tmp"
 mv "$tmp" "$DIR/gotv-tui"
 trap - EXIT

@@ -29,8 +29,9 @@ type (
 	eventMsg  gotv.Event
 	statusMsg string
 	radarMsg  struct {
-		a   *radar.Assets
-		err error
+		name string // which map was asked for: a late answer for another map is dropped
+		a    *radar.Assets
+		err  error
 	}
 	tickMsg time.Time
 )
@@ -49,6 +50,7 @@ type levelMap struct {
 
 type matchModel struct {
 	url     string
+	ctx     context.Context
 	cancel  context.CancelFunc
 	ch      chan tea.Msg
 	st      *gotv.State
@@ -59,12 +61,13 @@ type matchModel struct {
 	box     radar.Box // the map's own extent
 	frame   radar.Box // box grown to the shape of the map area: what zoom 1 shows
 	levels  []*levelMap
-	loading string  // map being loaded
-	aspect  float64 // terminal cell height / width
-	zoom    float64 // camera: 1 = whole map
-	zoomTo  float64 // zoom animates towards this
-	anchor  anchor  // radar point held still while zooming
-	moving  bool    // zoom animation running
+	loading string    // map being loaded
+	retryAt time.Time // after a failed map download, when to try again
+	aspect  float64   // terminal cell height / width
+	zoom    float64   // camera: 1 = whole map
+	zoomTo  float64   // zoom animates towards this
+	anchor  anchor    // radar point held still while zooming
+	moving  bool      // zoom animation running
 	drag    drag
 	// director: picks the shot; the camera follows it while directing
 	dir       *director.Director
@@ -94,7 +97,7 @@ type matchModel struct {
 
 func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &matchModel{url: url, cancel: cancel, ch: make(chan tea.Msg, 64), status: "connecting...", w: w, h: h, aspect: term.CellAspect()}
+	m := &matchModel{url: url, ctx: ctx, cancel: cancel, ch: make(chan tea.Msg, 64), status: "connecting...", w: w, h: h, aspect: term.CellAspect()}
 	send := func(msg tea.Msg, drop bool) {
 		if drop { // frames are superseded by the next one; never block the parser on them
 			select {
@@ -121,9 +124,18 @@ func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
 	return m, tea.Batch(m.wait(), tick(), animTick())
 }
 
+// wait delivers the next relay message; it gives up when the match is closed, so
+// leaving a quiet relay doesn't strand the command.
 func (m *matchModel) wait() tea.Cmd {
-	ch := m.ch
-	return func() tea.Msg { return <-ch }
+	ch, ctx := m.ch, m.ctx
+	return func() tea.Msg {
+		select {
+		case msg := <-ch:
+			return msg
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }
 
 func tick() tea.Cmd {
@@ -154,7 +166,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		m.st = &s
 		m.fx.onState(m.st, time.Now())
 		m.direct()
-		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" {
+		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" && time.Now().After(m.retryAt) {
 			m.loading = s.Map
 			return tea.Batch(m.wait(), loadRadar(s.Map))
 		}
@@ -166,8 +178,12 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		m.status = string(msg)
 		return m.wait()
 	case radarMsg:
+		if msg.name != m.loading {
+			return nil // asked for by an earlier match or map
+		}
 		if msg.err != nil {
 			m.status = "map: " + msg.err.Error()
+			m.loading, m.retryAt = "", time.Now().Add(10*time.Second)
 			return nil
 		}
 		m.assets, m.levels = msg.a, nil
@@ -199,7 +215,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 func loadRadar(name string) tea.Cmd {
 	return func() tea.Msg {
 		a, err := radar.Load(name)
-		return radarMsg{a, err}
+		return radarMsg{name, a, err}
 	}
 }
 

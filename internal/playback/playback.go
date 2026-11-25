@@ -26,6 +26,13 @@ func New[S, E any](tps, bufferS, resyncS float64) *Playback[S, E] {
 	return &Playback[S, E]{tps: tps, buffer: bufferS, resync: resyncS}
 }
 
+// Pending reports whether anything is still queued.
+func (p *Playback[S, E]) Pending() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.frames)+len(p.events) > 0
+}
+
 func (p *Playback[S, E]) PushFrame(tick int, s S) {
 	p.mu.Lock()
 	p.frames = append(p.frames, item[S]{tick, s})
