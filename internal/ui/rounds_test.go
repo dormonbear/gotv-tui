@@ -61,8 +61,8 @@ func TestHistoryKeepsNewestWhenNarrow(t *testing.T) {
 }
 
 func TestHistoryFromRulesAndLive(t *testing.T) {
-	known := []gotv.Outcome{{gotv.CT, "Enemy eliminated"}, {gotv.T, "Bomb exploded"}, {}} // round 3: unknown code
-	live := []roundResult{{4, gotv.CT, "Bomb defused"}}                                  // seen live after the rules' copy
+	known := []gotv.Outcome{{Winner: gotv.CT, Reason: "Enemy eliminated"}, {Winner: gotv.T, Reason: "Bomb exploded"}, {}} // round 3: unknown code
+	live := []roundResult{{4, gotv.CT, "Bomb defused"}}                                                                   // seen live after the rules' copy
 	if got := plain(historyLine(known, live, 5, 80)); got != " rounds ✕✱-✓" {
 		t.Fatalf("%q", got)
 	}
