@@ -1,6 +1,7 @@
 package radar
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -81,5 +82,17 @@ func TestFloorUnder(t *testing.T) {
 	}
 	if f.Under(gotv.Vec{X: 30, Y: 30, Z: 100}) {
 		t.Fatal("less than a storey below isn't under")
+	}
+}
+
+func TestRadarSources(t *testing.T) {
+	if s := sources("de_cache.txt"); len(s) != 2 || !strings.Contains(s[1], "GameTracking-CS2") {
+		t.Fatalf("overview fallback: %v", s)
+	}
+	if s := sources("de_cache.png"); len(s) != 4 || !strings.HasSuffix(s[1], "de_cache_radar_psd.png") {
+		t.Fatalf("image fallbacks: %v", s)
+	}
+	if s := sources("de_cache_lower.png"); len(s) != 2 {
+		t.Fatalf("lower level: one fallback only, got %v", s)
 	}
 }

@@ -105,7 +105,58 @@ func cached(name string) ([]byte, error) {
 	if b, err := os.ReadFile(file); err == nil && valid(name, b) {
 		return b, nil // a bad cached copy (older versions cached anything) is fetched again
 	}
-	r, err := client.Get(src + "/" + name)
+	var b []byte
+	for _, url := range sources(name) {
+		got, err := fetch(url)
+		if err == errNotFound {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !valid(name, got) {
+			return nil, fmt.Errorf("radar %s: invalid download", name)
+		}
+		b = got
+		break
+	}
+	if b == nil {
+		return nil, errNotFound
+	}
+	_ = os.MkdirAll(filepath.Dir(file), 0o755)
+	if tmp := file + ".tmp"; os.WriteFile(tmp, b, 0o644) == nil { // whole file or nothing
+		_ = os.Rename(tmp, file)
+	}
+	return b, nil
+}
+
+// Fallbacks for maps the main source doesn't have yet (Cache, at the 2026
+// Major): the overview from the game files as SteamTracking mirrors them, the
+// radar image as MurkyYT/cs2-map-icons extracted it.
+const (
+	overviewSrc = "https://raw.githubusercontent.com/SteamTracking/GameTracking-CS2/master/game/csgo/pak01_dir/resource/overviews"
+	imageSrc    = "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/radars"
+)
+
+// sources are the URLs to try, in order, for a cached file name.
+func sources(name string) []string {
+	out := []string{src + "/" + name}
+	if strings.HasSuffix(name, ".txt") {
+		return append(out, overviewSrc+"/"+name)
+	}
+	base := strings.TrimSuffix(name, ".png") // de_x or de_x_lower
+	suffixes := []string{"_radar_psd.png", "_radar_tga.png", "_radar.png"}
+	if strings.HasSuffix(base, "_lower") { // asked for every map: keep the misses few
+		suffixes = suffixes[:1]
+	}
+	for _, suffix := range suffixes {
+		out = append(out, imageSrc+"/"+base+suffix)
+	}
+	return out
+}
+
+func fetch(url string) ([]byte, error) {
+	r, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -114,20 +165,9 @@ func cached(name string) ([]byte, error) {
 		return nil, errNotFound
 	}
 	if r.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("radar %s: HTTP %s", name, r.Status)
+		return nil, fmt.Errorf("radar: HTTP %s from %s", r.Status, url)
 	}
-	b, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
-	if !valid(name, b) {
-		return nil, fmt.Errorf("radar %s: invalid download", name)
-	}
-	_ = os.MkdirAll(filepath.Dir(file), 0o755)
-	if tmp := file + ".tmp"; os.WriteFile(tmp, b, 0o644) == nil { // whole file or nothing
-		_ = os.Rename(tmp, file)
-	}
-	return b, nil
+	return io.ReadAll(r.Body)
 }
 
 func decode(b []byte) (*image.NRGBA, error) {
