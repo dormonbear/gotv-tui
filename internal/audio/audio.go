@@ -84,9 +84,10 @@ func (p *Player) spawn() {
 		// ffmpeg keeps just the sound, as MPEG-TS: easy to pass through a pipe
 		fetch := exec.CommandContext(ctx, "ffmpeg", "-loglevel", "error", "-reconnect", "1", "-reconnect_streamed", "1",
 			"-reconnect_delay_max", "5", "-headers", headers, "-i", url, "-vn", "-c:a", "copy", "-f", "mpegts", "pipe:1")
-		play := exec.CommandContext(ctx, "ffplay", "-nodisp", "-loglevel", "error", "-i", "pipe:0")
-		var fetchErr strings.Builder
+		play := exec.CommandContext(ctx, "ffplay", "-nodisp", "-nostats", "-loglevel", "error", "-i", "pipe:0")
+		var fetchErr, playErr strings.Builder
 		fetch.Stderr = &limited{w: &fetchErr, n: 2000}
+		play.Stderr = &limited{w: &playErr, n: 2000} // e.g. no audio device: shown if it stops
 		out, err1 := fetch.StdoutPipe()
 		in, err2 := play.StdinPipe()
 		if err := errors.Join(err1, err2); err != nil {
@@ -107,7 +108,7 @@ func (p *Player) spawn() {
 		fetch.Wait()
 		play.Wait()
 		if ctx.Err() == nil { // ended by itself: say why
-			msg := firstLine(strings.TrimSpace(fetchErr.String()))
+			msg := firstLine(strings.TrimSpace(playErr.String() + "\n" + fetchErr.String()))
 			if msg == "" {
 				msg = "stream ended"
 			}
