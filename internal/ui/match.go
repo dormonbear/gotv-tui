@@ -568,7 +568,7 @@ func (m *matchModel) view() string {
 	}
 	footer = dim(ansi.Truncate(footer, m.w, ""))
 	if m.sound.typing() {
-		footer = " audio source: " + m.sound.input.View()
+		footer = m.soundFooter()
 	}
 	return screen + "\n" + footer
 }

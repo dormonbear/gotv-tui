@@ -23,12 +23,23 @@ type sound struct {
 	offset    float64      // seconds
 	dataDelay atomic.Int64 // ms, read by the playback goroutine
 	input     *textinput.Model
-	last      string // last source typed, offered again
+	picking   bool              // choosing the platform, before the input
+	platform  int               // index into platforms
+	last      map[string]string // last room typed per platform, offered again
+}
+
+// platforms the audio picker offers; prefix is what audio.Source takes before the room.
+var platforms = []struct{ name, prefix, hint string }{
+	{"Huya", "huya", "room number or name, e.g. 123321"},
+	{"Twitch", "twitch", "channel name, e.g. eslcs"},
+	{"Bilibili", "bili", "room number, e.g. 6"},
+	{"URL", "", "a stream or media URL"},
+	{"Off", "", ""},
 }
 
 type soundStatusMsg string
 
-func (s *sound) typing() bool { return s.input != nil }
+func (s *sound) typing() bool { return s.input != nil || s.picking }
 
 // apply splits the offset between the data and the audio.
 func (s *sound) apply() {
@@ -53,13 +64,8 @@ func (m *matchModel) soundKey(k string) (tea.Cmd, bool) {
 	s := &m.sound
 	switch k {
 	case "v":
-		in := textinput.New()
-		in.Placeholder = "stream or media URL, or bili 6 / twitch name (empty: stop)"
-		in.SetValue(s.last)
-		in.CharLimit = 300
-		in.Width = max(20, m.w-24)
-		s.input = &in
-		return in.Focus(), true
+		s.picking = true
+		return nil, true
 	case "[", "]", "{", "}":
 		if s.player == nil {
 			return nil, true
@@ -80,31 +86,41 @@ func (m *matchModel) soundKey(k string) (tea.Cmd, bool) {
 // typeSource feeds a key to the source input.
 func (m *matchModel) typeSource(msg tea.KeyMsg) tea.Cmd {
 	s := &m.sound
+	if s.picking {
+		return m.pickPlatform(msg.String())
+	}
 	switch msg.String() {
 	case "esc":
 		s.input = nil
 		return nil
 	case "enter":
+		p := platforms[s.platform]
 		v := strings.TrimSpace(s.input.Value())
 		s.input = nil
-		s.stop()
 		if v == "" {
-			m.status = "audio off"
 			return nil
 		}
-		src, err := audio.Source(v)
+		s.stop()
+		typed := v
+		if p.prefix != "" {
+			typed = p.prefix + " " + v
+		}
+		src, err := audio.Source(typed)
 		if err != nil {
 			m.status = err.Error()
 			return nil
 		}
-		s.last = v
+		if s.last == nil {
+			s.last = map[string]string{}
+		}
+		s.last[p.name] = v
 		send := m.send
-		p, err := audio.Start(src, func(st string) { send(soundStatusMsg(st), false) })
+		player, err := audio.Start(src, func(st string) { send(soundStatusMsg(st), false) })
 		if err != nil {
 			m.status = err.Error()
 			return nil
 		}
-		s.player, s.src = p, v
+		s.player, s.src = player, typed
 		s.apply()
 		return nil
 	}
@@ -146,4 +162,60 @@ func (m *matchModel) soundNote() string {
 		return ""
 	}
 	return fmt.Sprintf(" ♪ %s · offset %+.1fs ([ ] { } t) ·", s.src, s.offset)
+}
+
+// pickPlatform: ←/→ (or the number) choose, enter goes on to the room, esc cancels.
+func (m *matchModel) pickPlatform(k string) tea.Cmd {
+	s := &m.sound
+	switch k {
+	case "left", "h", "shift+tab":
+		s.platform = (s.platform + len(platforms) - 1) % len(platforms)
+	case "right", "l", "tab":
+		s.platform = (s.platform + 1) % len(platforms)
+	case "esc":
+		s.picking = false
+	case "1", "2", "3", "4", "5":
+		s.platform = int(k[0]-'1') % len(platforms)
+		return m.pickPlatform("enter")
+	case "enter":
+		s.picking = false
+		p := platforms[s.platform]
+		if p.name == "Off" {
+			s.stop()
+			m.status = "audio off"
+			return nil
+		}
+		in := textinput.New()
+		in.Placeholder = p.hint
+		in.SetValue(s.last[p.name])
+		in.CharLimit = 300
+		in.Width = max(20, m.w-30)
+		s.input = &in
+		return in.Focus()
+	}
+	return nil
+}
+
+// soundFooter is the footer while picking a platform or typing the room.
+func (m *matchModel) soundFooter() string {
+	s := &m.sound
+	if s.picking {
+		var parts []string
+		for i, p := range platforms {
+			label := fmt.Sprintf(" %d %s ", i+1, p.name)
+			if i == s.platform {
+				label = switchOn.Render(label)
+			}
+			parts = append(parts, label)
+		}
+		return " audio from: " + strings.Join(parts, " ") + dim("   ←/→ choose · enter · esc")
+	}
+	p := platforms[s.platform]
+	label := p.name + " room: "
+	if p.prefix == "" {
+		label = "URL: "
+	} else if p.name == "Twitch" {
+		label = "Twitch channel: "
+	}
+	return " " + label + s.input.View()
 }

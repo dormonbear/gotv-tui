@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/playback"
@@ -35,9 +37,22 @@ func TestTapSync(t *testing.T) {
 func TestTypingSourceKeepsKeys(t *testing.T) {
 	a := New("", nil, 0)
 	a.match = testMatch(false)
-	a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
-	if !a.match.sound.typing() {
-		t.Fatal("v didn't open the audio source input")
+	key := func(k string) { a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}) }
+	key("v")
+	if !a.match.sound.picking {
+		t.Fatal("v didn't open the platform picker")
+	}
+	a.Update(tea.KeyMsg{Type: tea.KeyRight})
+	a.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if platforms[a.match.sound.platform].name != "Bilibili" {
+		t.Fatalf("→→ picked %s", platforms[a.match.sound.platform].name)
+	}
+	if f := ansi.Strip(a.match.soundFooter()); !strings.Contains(f, "Huya") || !strings.Contains(f, "Twitch") {
+		t.Fatalf("picker footer %q", f)
+	}
+	key("2") // straight to Twitch
+	if a.match.sound.input == nil || !strings.Contains(ansi.Strip(a.match.soundFooter()), "Twitch channel") {
+		t.Fatal("2 should open the Twitch channel input")
 	}
 	for _, k := range "bqu" {
 		a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{k}})
@@ -48,5 +63,15 @@ func TestTypingSourceKeepsKeys(t *testing.T) {
 	a.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if a.match == nil || a.match.sound.typing() {
 		t.Fatal("esc should close the input, not leave the match")
+	}
+}
+
+func TestPickOffStopsAudio(t *testing.T) {
+	m := testMatch(false)
+	m.sound.src = "huya 1"
+	m.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
+	if m.sound.typing() || m.sound.src != "" || m.status != "audio off" {
+		t.Fatal("Off stops the audio and closes the picker")
 	}
 }
