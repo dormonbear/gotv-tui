@@ -10,6 +10,13 @@ shows the scoreboard, the game log and a live radar with every player on it.
 
 No game client, no account, no scraping: one ~4 MB binary for macOS, Linux and Windows.
 
+![A live match: scoreboard, round history, economy, game log and the radar](docs/match.png)
+
+<sub>HEROIC vs M80 at the PGL Major Singapore 2026, in a terminal without image support
+(braille map). Terminals like Ghostty, kitty, iTerm2 or WezTerm show the real radar image.</sub>
+
+![The home screen with the source list](docs/home.png)
+
 ## Features
 
 - **Live radar** with every player, their facing, the bomb, smokes, molotovs,
