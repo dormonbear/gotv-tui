@@ -54,7 +54,7 @@ func (m *matchModel) soundKey(k string) (tea.Cmd, bool) {
 	switch k {
 	case "v":
 		in := textinput.New()
-		in.Placeholder = "stream URL, or bili 6 / twitch name / douyin 123 (empty: stop)"
+		in.Placeholder = "stream or media URL, or bili 6 / twitch name (empty: stop)"
 		in.SetValue(s.last)
 		in.CharLimit = 300
 		in.Width = max(20, m.w-24)

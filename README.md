@@ -126,7 +126,7 @@ delay, not gotv-tui.
 | drag, `←↑↓→`, `hjkl` | pan |
 | `0` | whole map |
 | `d`, click the switch | auto director on/off (on by default) |
-| `v` | audio: play a stream's sound along (URL, or `bili <room>`, `twitch <name>`, `douyin <room>`; empty stops) |
+| `v` | audio: play a stream's sound along (a stream or media URL, or `bili <room>`, `twitch <name>`; empty stops) |
 | `[` `]` / `{` `}` | audio sync: shift by 1 s / 0.1 s |
 | `t` | audio sync: press as a kill is called; lines up on the nearest kill |
 | `s` | scoreboard: live state ↔ match stats (+/-, ADR, HS%, KAS%, KPR, utility damage, enemies flashed, 3k/4k/5k) |
@@ -139,8 +139,8 @@ Any manual zoom or pan hands the camera back to you.
 ## Listening along
 
 `v` plays a live stream's sound next to the radar (no video): the official broadcast
-on Twitch or YouTube, or a co-streamer on Bilibili or Douyin, or any direct stream
-URL. It needs [yt-dlp](https://github.com/yt-dlp/yt-dlp) and
+on Twitch or YouTube, a co-streamer on Bilibili, or any direct media URL (`.flv` /
+`.m3u8`, e.g. copied from the browser's network panel while the stream plays). It needs [yt-dlp](https://github.com/yt-dlp/yt-dlp) and
 [FFmpeg](https://ffmpeg.org) on your PATH (`brew install yt-dlp ffmpeg`).
 
 Streams and CSTV run on different delays, so line them up: press `t` the moment the
@@ -149,8 +149,8 @@ has shown, or one about to show); repeat to refine, or nudge with `[` `]` (1 s) 
 `{` `}` (0.1 s). If the audio is later than the match data the radar waits for it;
 if it is earlier, the audio is held back.
 
-Huya and Douyu aren't supported yet: their stream links need signing that yt-dlp
-currently can't do.
+Douyu, Huya and Douyin live aren't supported by name: their stream links need
+signing that yt-dlp currently can't do. A media URL copied from the browser works.
 
 ## Terminal support
 
