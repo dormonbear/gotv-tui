@@ -135,7 +135,7 @@ delay, not gotv-tui.
 | drag, `←↑↓→`, `hjkl` | pan |
 | `0` | whole map |
 | `d`, click the switch | auto director on/off (on by default) |
-| `v` | audio: pick a platform (Huya, Twitch, Bilibili, a URL, or Off), then type the room or channel; e.g. Huya `123321`, Twitch `eslcs`. Twitch needs `HTTPS_PROXY` where it's blocked |
+| `v` | audio: pick a platform (Huya, Twitch, Bilibili, a URL, or Off), then type the room or channel; e.g. Huya `123321`, Twitch `eslcs`; `↑`/`↓` bring back rooms that played before. Leaving a source and coming back resumes its audio (not after a restart). Twitch needs `HTTPS_PROXY` where it's blocked |
 | `[` `]` / `{` `}` | audio sync: shift by 1 s / 0.1 s |
 | `t` | audio sync: press as a kill is called; lines up on the nearest kill |
 | `s` | scoreboard: live state ↔ match stats (+/-, ADR, HS%, KAST% (trades counted from when you connect), KPR, utility damage, enemies flashed, 3k/4k/5k) |
@@ -191,6 +191,7 @@ WezTerm or iTerm2 on macOS, Windows Terminal on Windows.
 | File | Contents |
 |---|---|
 | `~/.config/gotv-tui/feeds.json` | your source list |
+| `~/.config/gotv-tui/audio.json` | audio rooms that played, per platform |
 | `~/.cache/gotv-tui/radar/` | downloaded radar images |
 
 ## FAQ

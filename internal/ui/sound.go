@@ -26,7 +26,19 @@ type sound struct {
 	picking   bool              // choosing the platform, before the input
 	platform  int               // index into platforms
 	last      map[string]string // last room typed per platform, offered again
+	history   []string          // the chosen platform's rooms that played, for ↑/↓
+	histAt    int               // -1: not browsing the history
+	pending   [2]string         // platform and room just started; saved once it plays
 }
+
+// audioChoice is what a match was playing, to restore when the source is reopened.
+type audioChoice struct {
+	typed  string
+	offset float64
+}
+
+// startPlayer starts the audio pipeline (swapped out in tests).
+var startPlayer = audio.Start
 
 // platforms the audio picker offers; prefix is what audio.Source takes before the room.
 var platforms = []struct{ name, prefix, hint string }{
@@ -105,23 +117,27 @@ func (m *matchModel) typeSource(msg tea.KeyMsg) tea.Cmd {
 		if p.prefix != "" {
 			typed = p.prefix + " " + v
 		}
-		src, err := audio.Source(typed)
-		if err != nil {
-			m.status = err.Error()
-			return nil
-		}
 		if s.last == nil {
 			s.last = map[string]string{}
 		}
 		s.last[p.name] = v
-		send := m.send
-		player, err := audio.Start(src, func(st string) { send(soundStatusMsg(st), false) })
-		if err != nil {
-			m.status = err.Error()
+		m.startAudio(typed, [2]string{p.name, v})
+		return nil
+	case "up", "down":
+		if len(s.history) == 0 {
 			return nil
 		}
-		s.player, s.src = player, typed
-		s.apply()
+		if msg.String() == "up" {
+			s.histAt = min(s.histAt+1, len(s.history)-1)
+		} else {
+			s.histAt = max(s.histAt-1, -1)
+		}
+		v := ""
+		if s.histAt >= 0 {
+			v = s.history[s.histAt]
+		}
+		s.input.SetValue(v)
+		s.input.CursorEnd()
 		return nil
 	}
 	var cmd tea.Cmd
@@ -187,6 +203,7 @@ func (m *matchModel) pickPlatform(k string) tea.Cmd {
 		}
 		in := textinput.New()
 		in.Placeholder = p.hint
+		s.history, s.histAt = loadRooms()[p.name], -1
 		in.SetValue(s.last[p.name])
 		in.CharLimit = 300
 		in.Width = max(20, m.w-30)
@@ -217,5 +234,43 @@ func (m *matchModel) soundFooter() string {
 	} else if p.name == "Twitch" {
 		label = "Twitch channel: "
 	}
-	return " " + label + s.input.View()
+	line := " " + label + s.input.View()
+	if len(s.history) > 0 {
+		line += dim("   ↑/↓ history: " + strings.Join(s.history, " · "))
+	}
+	return line
+}
+
+// startAudio plays typed ("huya 123321", a URL, ...); pick is the platform and
+// room to remember once it actually plays.
+func (m *matchModel) startAudio(typed string, pick [2]string) {
+	s := &m.sound
+	s.stop()
+	src, err := audio.Source(typed)
+	if err != nil {
+		m.status = err.Error()
+		return
+	}
+	send := m.send
+	player, err := startPlayer(src, func(st string) { send(soundStatusMsg(st), false) })
+	if err != nil {
+		m.status = err.Error()
+		return
+	}
+	s.player, s.src, s.pending = player, typed, pick
+	s.apply()
+}
+
+// audioChoice is what to restore if this source is opened again.
+func (m *matchModel) audioChoice() *audioChoice {
+	if m.sound.src == "" {
+		return nil
+	}
+	return &audioChoice{m.sound.src, m.sound.offset}
+}
+
+// restoreAudio starts the audio a source had when it was left.
+func (m *matchModel) restoreAudio(c *audioChoice) {
+	m.sound.offset = c.offset
+	m.startAudio(c.typed, [2]string{})
 }

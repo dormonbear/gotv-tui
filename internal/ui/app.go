@@ -27,8 +27,9 @@ type App struct {
 	checked     bool // the update check has answered
 	checkFailed bool // offline, rate-limited, ...
 	quitting    bool
-	notice      string // update result
-	Restart     bool   // updated in place: main starts the new binary
+	notice      string                  // update result
+	audio       map[string]*audioChoice // per source URL, this run only: restored on reopening
+	Restart     bool                    // updated in place: main starts the new binary
 }
 
 type latestMsg struct {
@@ -182,6 +183,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q":
 				return a, a.quit()
 			case "b", "esc": // back to the source list
+				a.rememberAudio()
 				a.match.hideImages()
 				a.match.close()
 				a.match = nil
@@ -216,6 +218,9 @@ func (a *App) open(url string, cmd tea.Cmd) tea.Cmd {
 	m, start := newMatch(url, a.w, a.h)
 	m.out, m.gfx = a.out, a.gfx
 	a.match = m
+	if c := a.audio[url]; c != nil { // back on a source that had audio: carry on
+		m.restoreAudio(c)
+	}
 	return tea.Batch(cmd, start)
 }
 
@@ -248,4 +253,16 @@ func (a *App) View() string {
 		return a.list.view(a.versionLine())
 	}
 	return ""
+}
+
+// rememberAudio keeps the open match's audio for when its source is reopened.
+func (a *App) rememberAudio() {
+	if a.audio == nil {
+		a.audio = map[string]*audioChoice{}
+	}
+	if c := a.match.audioChoice(); c != nil {
+		a.audio[a.match.url] = c
+	} else {
+		delete(a.audio, a.match.url)
+	}
 }

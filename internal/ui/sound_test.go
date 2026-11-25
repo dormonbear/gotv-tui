@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/dormonbear/gotv-tui/internal/audio"
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/playback"
 	"github.com/dormonbear/gotv-tui/internal/radar"
@@ -73,5 +75,53 @@ func TestPickOffStopsAudio(t *testing.T) {
 	m.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("5")})
 	if m.sound.typing() || m.sound.src != "" || m.status != "audio off" {
 		t.Fatal("Off stops the audio and closes the picker")
+	}
+}
+
+func TestRoomHistoryAndRestore(t *testing.T) {
+	dir := t.TempDir()
+	roomsFile = func() string { return filepath.Join(dir, "audio.json") }
+	var started []string
+	startPlayer = func(src string, _ func(string)) (*audio.Player, error) {
+		started = append(started, src)
+		return nil, nil
+	}
+	defer func() { startPlayer = audio.Start }()
+
+	for _, r := range []string{"1", "2", "3", "4", "5", "6", "3"} {
+		addRoom("Huya", r)
+	}
+	if got := loadRooms()["Huya"]; strings.Join(got, ",") != "3,6,5,4,2" {
+		t.Fatalf("newest first, no repeats, 5 kept: %v", got)
+	}
+
+	a := New("", nil, 0)
+	a.list, _ = newList(filepath.Join(dir, "feeds.json"))
+	a.match = testMatch(false)
+	a.match.url = "https://relay.example/a"
+	a.match.cancel = func() {}
+	m := a.match
+	m.startAudio("twitch eslcs", [2]string{"Twitch", "eslcs"})
+	if len(loadRooms()["Twitch"]) != 0 {
+		t.Fatal("a room is only remembered once it plays")
+	}
+	m.update(soundStatusMsg("audio: playing"))
+	if got := loadRooms()["Twitch"]; len(got) != 1 || got[0] != "eslcs" {
+		t.Fatalf("played room saved: %v", got)
+	}
+	m.sound.offset = 2.5
+	a.Update(tea.KeyMsg{Type: tea.KeyEsc}) // back to the list
+	a.open("https://relay.example/a", nil)
+	if n := len(started); n != 2 || started[1] != "https://www.twitch.tv/eslcs" || a.match.sound.offset != 2.5 {
+		t.Fatalf("reopening the source restores its audio: %v offset %v", started, a.match.sound.offset)
+	}
+	a.match.close()
+	a.open("https://relay.example/b", nil)
+	if len(started) != 2 {
+		t.Fatal("another source starts silent")
+	}
+	a.match.close()
+	if New("", nil, 0).audio != nil {
+		t.Fatal("a new run restores nothing")
 	}
 }
