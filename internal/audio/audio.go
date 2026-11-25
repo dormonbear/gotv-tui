@@ -20,7 +20,7 @@ import (
 // rooms turns "<platform> <room>" shortcuts into stream page URLs.
 var rooms = map[string]string{
 	"huya": "https://www.huya.com/", "bili": "https://live.bilibili.com/", "bilibili": "https://live.bilibili.com/",
-	"douyin": "https://live.douyin.com/", "twitch": "https://www.twitch.tv/", "douyu": "https://www.douyu.com/",
+	"twitch": "https://www.twitch.tv/", "youtube": "https://www.youtube.com/@",
 }
 
 var roomRe = regexp.MustCompile(`^\s*([a-z]+)[\s:/]+([A-Za-z0-9_]+)\s*$`)
