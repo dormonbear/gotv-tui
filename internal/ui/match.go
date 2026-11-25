@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dormonbear/gotv-tui/internal/director"
+	"github.com/dormonbear/gotv-tui/internal/feeds"
 	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/playback"
 	"github.com/dormonbear/gotv-tui/internal/radar"
@@ -56,6 +57,7 @@ type matchModel struct {
 	st      *gotv.State
 	log     []gotv.Event  // newest first
 	rounds  []roundResult // results seen since connecting
+	notice  string        // app-wide notice (update available) for the footer
 	kills   []radar.KillMark
 	status  string
 	assets  *radar.Assets
@@ -268,7 +270,7 @@ func header(st *gotv.State) string {
 	return fmt.Sprintf(" %s%s%s %d%s : %s%s%d %s%s  %s",
 		term.Fg(term.CT), boldOn, st.CT.Name, st.CT.Score, reset,
 		term.Fg(term.T), boldOn, st.T.Score, st.T.Name, reset,
-		dim(st.Map))
+		dim(feeds.MapName(st.Map)))
 }
 
 var frame = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("8"))
@@ -451,7 +453,11 @@ func (m *matchModel) view() string {
 	if m.zoom > 1.01 {
 		zoom = fmt.Sprintf(" %.1fx ·", m.zoom)
 	}
-	footer := dim(ansi.Truncate(fmt.Sprintf(" q quit · b/esc sources · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status), m.w, ""))
+	footer := fmt.Sprintf(" q quit · b/esc sources · d director · wheel/+- zoom · drag/←↑↓→ pan · 0 reset ·%s %s · CSTV ~3min delay", zoom, m.status)
+	if m.notice != "" { // first, so a narrow footer keeps it
+		footer = " " + m.notice + " ·" + footer
+	}
+	footer = dim(ansi.Truncate(footer, m.w, ""))
 	return screen + "\n" + footer
 }
 

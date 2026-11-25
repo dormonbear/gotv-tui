@@ -30,3 +30,14 @@ func TestVerify(t *testing.T) {
 		t.Fatal("accepted an asset missing from SHA256SUMS")
 	}
 }
+
+func TestNewer(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{{"0.17.0", "0.16.9", true}, {"0.10.0", "0.9.3", true}, {"v1.0.0", "0.99.0", true}, {"0.17.0", "0.17.0", false}, {"0.16.0", "0.17.0", false}} {
+		if got := Newer(c.a, c.b); got != c.want {
+			t.Errorf("Newer(%s, %s) = %v", c.a, c.b, got)
+		}
+	}
+}

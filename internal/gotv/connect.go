@@ -78,7 +78,7 @@ func Connect(ctx context.Context, url string, h Handlers) {
 		case err != nil:
 			h.Status("relay offline, retrying...")
 		default:
-			h.Status("connected · " + s.Map)
+			h.Status("connected · " + feeds.MapName(s.Map))
 			err = stream(ctx, url, s, h)
 			if ctx.Err() != nil {
 				return

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -49,6 +50,61 @@ func get(url string) (*http.Response, error) {
 	return r, err
 }
 
+type release struct {
+	Tag    string `json:"tag_name"`
+	Assets []struct {
+		Name string `json:"name"`
+		URL  string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+func latestRelease() (*release, error) {
+	r, err := get("https://api.github.com/repos/" + repo + "/releases/latest")
+	if err != nil {
+		return nil, err
+	}
+	defer r.Body.Close()
+	var rel release
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&rel); err != nil {
+		return nil, err
+	}
+	return &rel, nil
+}
+
+// Latest returns the newest released version when it is newer than current
+// ("" when current is up to date or a source build).
+func Latest(current string) (string, error) {
+	if current == "dev" || AssetName(runtime.GOOS, runtime.GOARCH) == "" {
+		return "", nil
+	}
+	rel, err := latestRelease()
+	if err != nil {
+		return "", err
+	}
+	if v := strings.TrimPrefix(rel.Tag, "v"); Newer(v, current) {
+		return v, nil
+	}
+	return "", nil
+}
+
+// Newer reports whether version a is later than b ("1.10.0" > "1.9.3").
+func Newer(a, b string) bool {
+	pa, pb := strings.Split(strings.TrimPrefix(a, "v"), "."), strings.Split(strings.TrimPrefix(b, "v"), ".")
+	for i := 0; i < max(len(pa), len(pb)); i++ {
+		x, y := 0, 0
+		if i < len(pa) {
+			x, _ = strconv.Atoi(pa[i])
+		}
+		if i < len(pb) {
+			y, _ = strconv.Atoi(pb[i])
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return false
+}
+
 // Run downloads the latest release over the running executable.
 func Run(current string) (string, error) {
 	if current == "dev" {
@@ -58,25 +114,13 @@ func Run(current string) (string, error) {
 	if asset == "" {
 		return "No prebuilt binary for " + runtime.GOOS + "-" + runtime.GOARCH + ".", nil
 	}
-	r, err := get("https://api.github.com/repos/" + repo + "/releases/latest")
-	if err != nil {
-		return "", err
-	}
-	var rel struct {
-		Tag    string `json:"tag_name"`
-		Assets []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
-		} `json:"assets"`
-	}
-	err = json.NewDecoder(r.Body).Decode(&rel)
-	r.Body.Close()
+	rel, err := latestRelease()
 	if err != nil {
 		return "", err
 	}
 	latest := strings.TrimPrefix(rel.Tag, "v")
-	if latest == strings.TrimPrefix(current, "v") {
-		return "Already up to date (v" + latest + ").", nil
+	if !Newer(latest, current) {
+		return "Already up to date (v" + strings.TrimPrefix(current, "v") + ").", nil
 	}
 	url, sums := "", ""
 	for _, a := range rel.Assets {
