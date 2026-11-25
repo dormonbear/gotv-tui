@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
+	"path"
 	"runtime"
 	"strings"
 )
@@ -27,8 +27,8 @@ func betterTerminal(goos string, getenv func(string) string, has func(string) bo
 		}
 		home := getenv("HOME")
 		app := func(n string) string {
-			for _, dir := range []string{"/Applications", filepath.Join(home, "Applications")} {
-				if p := filepath.Join(dir, n+".app"); has(p) {
+			for _, dir := range []string{"/Applications", path.Join(home, "Applications")} {
+				if p := path.Join(dir, n+".app"); has(p) { // macOS paths, whatever the build host
 					return p
 				}
 			}
