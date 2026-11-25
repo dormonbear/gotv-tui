@@ -75,6 +75,15 @@ func Sprites(r *Raster, cellW, cellH int, st *gotv.State, o Opts) []Use {
 		px, w := math.Round(rad*perUnit), math.Max(2, rad*perUnit*0.18)
 		add(fmt.Sprintf("boom:%d:%.0f", step, px), 3, x, y, func() Sprite { return boomSprite(px, w, a, flash, boomC) })
 	}
+	for _, bl := range o.Blasts {
+		age := o.Now.Sub(bl.At).Seconds()
+		if rad, a, c, ok := bl.fx(age); ok && here(bl.Pos) {
+			x, y := at(bl.Pos)
+			step := int(age * 20) // ~20 frames a second, each drawn once
+			px := math.Round(rad * perUnit)
+			add(fmt.Sprintf("bfx:%s:%d:%.0f", bl.Nade, step, px), 3, x, y, func() Sprite { return boomSprite(px, math.Max(2, px*0.3), a, false, c) })
+		}
+	}
 	for i, kl := range o.Kills {
 		if o.Now.Sub(kl.At) > killShow || !here(kl.To) {
 			continue
@@ -135,7 +144,9 @@ func Sprites(r *Raster, cellW, cellH int, st *gotv.State, o Opts) []Use {
 		side, label, bomb := pl.Side, strings.TrimSpace(labels[pl.Name]), pl.HasBomb
 		focus := strings.ToLower(pl.Name) == o.Focus
 		add(fmt.Sprintf("arrow:%s:%d", side, dir), 6, x, y, func() Sprite { return arrowSprite(m, teamColor(side), dir) })
-		add(fmt.Sprintf("player:%s:%s:%v:%v", side, label, bomb, focus), 7, x, y, func() Sprite { return playerSprite(m, teamColor(side), label, bomb, focus) })
+		blind := math.Ceil(math.Min(pl.Blind, 1.5)/1.5*4) / 4 // 4 steps, so few sprites
+		team := blinded(teamColor(side), blind*1.5)
+		add(fmt.Sprintf("player:%s:%s:%v:%v:%.2f", side, label, bomb, focus, blind), 7, x, y, func() Sprite { return playerSprite(m, team, label, bomb, focus) })
 	}
 	return out
 }

@@ -247,6 +247,14 @@ func play(parent, ctx context.Context, p *demoinfocs.Parser, mapName string, tps
 	p.RegisterEventHandler(func(e events.BombPlanted) { emit(Event{Kind: EvPlant, Player: name(e.Player)}) })
 	p.RegisterEventHandler(func(e events.BombDefused) { emit(Event{Kind: EvDefuse, Player: name(e.Player)}) })
 	p.RegisterEventHandler(func(events.BombExplode) { emit(Event{Kind: EvExplode}) })
+	// HE: when its projectile goes away, which every CS2 recording has (early
+	// ones have no he_detonate event)
+	p.RegisterEventHandler(func(e events.GrenadeProjectileDestroy) {
+		if w := e.Projectile.WeaponInstance; w != nil && w.Type == common.EqHE {
+			emit(Event{Kind: EvBlast, Nade: HE, To: vec(e.Projectile.Position())})
+		}
+	})
+	p.RegisterEventHandler(func(e events.FlashExplode) { emit(Event{Kind: EvBlast, Nade: Flash, To: vec(e.Position)}) })
 	p.RegisterEventHandler(func(e events.SmokeStart) { smokes[e.GrenadeEntityID] = *vec(e.Position) })
 	p.RegisterEventHandler(func(e events.SmokeExpired) { delete(smokes, e.GrenadeEntityID) })
 
