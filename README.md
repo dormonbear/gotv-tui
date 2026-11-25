@@ -231,7 +231,7 @@ Bug reports, relay URLs for other events and pull requests are welcome; see
 
 - [demoinfocs-golang](https://github.com/markus-wa/demoinfocs-golang): CS2 demo and CSTV broadcast parsing
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss): the TUI
-- [2mlml/cs2-radar-images](https://github.com/2mlml/cs2-radar-images): radar images
+- [2mlml/cs2-radar-images](https://github.com/2mlml/cs2-radar-images): radar images; maps it lacks (Cache) from [MurkyYT/cs2-map-icons](https://github.com/MurkyYT/cs2-map-icons) with overviews from [SteamTracking/GameTracking-CS2](https://github.com/SteamTracking/GameTracking-CS2)
 - Valve's HLTV director, whose look-ahead shot selection the auto director follows
 
 ## Disclaimer
@@ -239,3 +239,7 @@ Bug reports, relay URLs for other events and pull requests are welcome; see
 gotv-tui is an unofficial fan project, not affiliated with or endorsed by Valve,
 HLTV or any tournament organizer. Counter-Strike is a trademark of Valve Corporation.
 It only reads broadcasts that organizers publish for public viewing.
+
+## License
+
+[MIT](LICENSE). Radar images are Valve's and are downloaded at run time, not shipped.
