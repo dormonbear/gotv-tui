@@ -237,7 +237,8 @@ type Opts struct {
 	Focus      string // followed player (lowercase): drawn highlighted
 	Boom       *Boom  // a C4 explosion in progress
 	Blasts     []Blast
-	Floor      Floor // players clearly above the ground get a ▴
+	Floor      Floor       // players clearly above the ground get a ▴
+	Labels     LabelMemory // last frames' name/number choices, to keep them steady
 }
 
 // Draw overlays the markers on this level over the static base, as ANSI rows.
@@ -494,6 +495,7 @@ func playerLabels(players []gotv.Player, o Opts, here func(gotv.Vec) bool, toCel
 		}
 	}
 	sort.Slice(ms, func(i, j int) bool { return ms[i].cx < ms[j].cx })
+	named := func(n string) bool { return o.Labels != nil && o.Labels[n].named }
 	taken := map[[2]int]bool{}
 	for _, m := range ms {
 		taken[[2]int{m.cx, m.cy}] = true
@@ -530,14 +532,33 @@ func playerLabels(players []gotv.Player, o Opts, here func(gotv.Vec) bool, toCel
 			label = string(name)
 		}
 		w := len([]rune(label))
-		if m.cx+w > CW {
-			continue
+		free := func(gap int) bool { // the label plus gap clear cells after it
+			if m.cx+w > CW {
+				return false
+			}
+			for x := m.cx + 1; x < m.cx+w+gap; x++ {
+				if taken[[2]int{x, m.cy}] {
+					return false
+				}
+			}
+			return true
 		}
-		fits := true
-		for x := m.cx + 1; x < m.cx+w+1 && fits; x++ { // +1: a gap before the next mark
-			fits = !taken[[2]int{x, m.cy}]
+		// hysteresis: switching to the name needs one more free cell than keeping
+		// it, and a choice is held labelHold unless the name would now overlap
+		was := named(m.name)
+		want := free(1)
+		if !was {
+			want = free(2)
 		}
-		if !fits {
+		if o.Labels != nil {
+			if prev, ok := o.Labels[m.name]; ok && want != prev.named && o.Now.Sub(prev.at) < labelHold {
+				want = prev.named && free(0)
+			}
+			if prev, ok := o.Labels[m.name]; !ok || prev.named != want {
+				o.Labels[m.name] = labelMem{want, o.Now}
+			}
+		}
+		if !want {
 			continue
 		}
 		for x := m.cx; x < m.cx+w; x++ {
@@ -603,3 +624,14 @@ func blinded(c term.RGB, left float64) term.RGB {
 	}
 	return term.Mix(c, term.White, math.Min(1, left/1.5))
 }
+
+// LabelMemory remembers, per player, whether their name was shown and since when.
+type LabelMemory map[string]labelMem
+
+type labelMem struct {
+	named bool
+	at    time.Time
+}
+
+// labelHold is how long a name/number choice sticks before it may flip back.
+const labelHold = 800 * time.Millisecond

@@ -70,13 +70,16 @@ type matchModel struct {
 	log          []gotv.Event  // newest first
 	rounds       []roundResult // results seen since connecting
 	notice       string        // app-wide notice (update available) for the footer
+	link         link          // connection state, for the footer badge
+	lastData     time.Time     // when the last snapshot arrived
 	stats        bool          // scoreboard shows match stats instead of the live state
 	directBefore bool          // the director had the camera when the current follow began
 	sound        sound         // a stream's audio played along
 	send         func(tea.Msg, bool)
 	kills        []radar.KillMark
-	blasts       []radar.Blast // HE and flash pops this round
-	floor        radar.Floor   // ground height learnt from where players walk
+	blasts       []radar.Blast        // HE and flash pops this round
+	floor        radar.Floor          // ground height learnt from where players walk
+	labelMem     [2]radar.LabelMemory // per level: steady name labels across frames
 	status       string
 	assets       *radar.Assets
 	box          radar.Box // the map's own extent
@@ -180,7 +183,7 @@ func (m *matchModel) wait() tea.Cmd {
 }
 
 func tick() tea.Cmd {
-	return tea.Tick(250*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) }) // drives the waiting animation and the link badge
 }
 
 func (m *matchModel) close() {
@@ -214,6 +217,7 @@ func (m *matchModel) applyEvent(e gotv.Event, now time.Time) {
 func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case stateMsg:
+		m.lastData = time.Now()
 		s := gotv.State(msg)
 		if m.st != nil && (s.Map != m.st.Map || s.Round < m.st.Round-1) {
 			m.rounds = nil // another match
@@ -238,6 +242,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		return m.wait()
 	case statusMsg:
 		m.status = term.Clean(string(msg), 120) // may carry relay-side error text
+		m.link = linkOf(m.status)
 		return m.wait()
 	case radarMsg:
 		if msg.name != m.loading || (m.st != nil && m.st.Map != msg.name) {
@@ -397,6 +402,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			Boom:       m.fx.boom(time.Now()),
 			Blasts:     m.blasts,
 			Floor:      m.floor,
+			Labels:     m.labelMemory(lv.lower),
 		}
 		var lines []string
 		if m.images() || m.wholeFrames() { // map and markers are terminal images: the text is blank
@@ -533,7 +539,8 @@ func (m *matchModel) view() string {
 	if m.notice != "" { // first, so a narrow footer keeps it
 		footer = " " + m.notice + " ·" + footer
 	}
-	footer = dim(ansi.Truncate(footer, m.w, ""))
+	badge := linkBadge(m.link, m.lastData, time.Now())
+	footer = badge + dim(ansi.Truncate(footer, m.w-ansi.StringWidth(badge), ""))
 	if m.sound.typing() {
 		footer = " audio source: " + m.sound.input.View()
 	}
@@ -587,7 +594,7 @@ var waitQuips = []string{
 }
 
 // waiting animates the empty match screen: a T carrying the bomb runs up and
-// down a lane, under a rotating line of quips. Driven by the 250 ms tick.
+// down a lane, under a rotating line of quips; steps every 250 ms.
 func waiting(now time.Time, status string) []string {
 	const lane = 28
 	f := int(now.UnixMilli() / 250)
@@ -603,4 +610,16 @@ func waiting(now time.Time, status string) []string {
 		dim(" " + waitQuips[f/12%len(waitQuips)] + strings.Repeat(".", f%4)),
 		dim(" " + status),
 	}
+}
+
+// labelMemory is the label memory of the upper (false) or lower level map.
+func (m *matchModel) labelMemory(lower bool) radar.LabelMemory {
+	i := 0
+	if lower {
+		i = 1
+	}
+	if m.labelMem[i] == nil {
+		m.labelMem[i] = radar.LabelMemory{}
+	}
+	return m.labelMem[i]
 }
