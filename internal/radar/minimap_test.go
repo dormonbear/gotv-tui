@@ -24,3 +24,17 @@ func TestBlastFx(t *testing.T) {
 		t.Fatal("blindness whitens the marker, fully while deeply flashed")
 	}
 }
+
+func TestFloorRaised(t *testing.T) {
+	f := Floor{}
+	f.Observe([]gotv.Player{{Alive: true, Pos: &gotv.Vec{X: 10, Y: 10, Z: 0}}, {Alive: false, Pos: &gotv.Vec{X: 500, Y: 500, Z: -300}}})
+	if f.Raised(gotv.Vec{X: 30, Y: 40, Z: 40}) {
+		t.Fatal("stairs-height is not raised")
+	}
+	if !f.Raised(gotv.Vec{X: 30, Y: 40, Z: 70}) {
+		t.Fatal("on a crate above learnt ground should be raised")
+	}
+	if f.Raised(gotv.Vec{X: 500, Y: 500, Z: 0}) {
+		t.Fatal("dead players don't teach the floor; unknown ground is never raised")
+	}
+}

@@ -144,6 +144,9 @@ func Sprites(r *Raster, cellW, cellH int, st *gotv.State, o Opts) []Use {
 		side, label, bomb := pl.Side, strings.TrimSpace(labels[pl.Name]), pl.HasBomb
 		focus := strings.ToLower(pl.Name) == o.Focus
 		add(fmt.Sprintf("arrow:%s:%d", side, dir), 6, x, y, func() Sprite { return arrowSprite(m, teamColor(side), dir) })
+		if o.Floor.Raised(*pl.Pos) {
+			add("raised", 6, x, y-m.dot*2.2, func() Sprite { return raisedSprite(m) })
+		}
 		blind := math.Ceil(math.Min(pl.Blind, 1.5)/1.5*4) / 4 // 4 steps, so few sprites
 		team := blinded(teamColor(side), blind*1.5)
 		add(fmt.Sprintf("player:%s:%s:%v:%v:%.2f", side, label, bomb, focus, blind), 7, x, y, func() Sprite { return playerSprite(m, team, label, bomb, focus) })
@@ -232,6 +235,17 @@ func arrowSprite(m sizes, team term.RGB, dir int) Sprite {
 	h := float64(n) / 2
 	a := float64(dir) * math.Pi / 8 // 0 = east, counter-clockwise, screen y is down
 	c.line(h, h, h+math.Cos(a)*l, h-math.Sin(a)*l, m.stroke, team, 1)
+	return Sprite{c.img, n / 2, n / 2}
+}
+
+// raisedSprite is the white ▴ above a player standing above the ground.
+func raisedSprite(m sizes) Sprite {
+	s := m.dot * 0.8
+	n := int(2*s+2*m.stroke) + 2
+	c := newCanvas(n, n)
+	h := float64(n) / 2
+	c.line(h-s, h+s/2, h, h-s/2, m.stroke, term.White, 1)
+	c.line(h, h-s/2, h+s, h+s/2, m.stroke, term.White, 1)
 	return Sprite{c.img, n / 2, n / 2}
 }
 
