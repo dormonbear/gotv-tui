@@ -71,3 +71,15 @@ func TestLabelsHoldSteady(t *testing.T) {
 		t.Fatal("after the hold the name returns")
 	}
 }
+
+func TestFloorUnder(t *testing.T) {
+	f := Floor{}
+	f.Observe([]gotv.Player{{Alive: true, Pos: &gotv.Vec{X: 10, Y: 10, Z: 200}}}) // on the bridge
+	f.Observe([]gotv.Player{{Alive: true, Pos: &gotv.Vec{X: 20, Y: 20, Z: 0}}})   // walking under it
+	if !f.Under(gotv.Vec{X: 30, Y: 30, Z: 0}) || f.Raised(gotv.Vec{X: 30, Y: 30, Z: 0}) {
+		t.Fatal("under the bridge: ▾, not ▴")
+	}
+	if f.Under(gotv.Vec{X: 30, Y: 30, Z: 100}) {
+		t.Fatal("less than a storey below isn't under")
+	}
+}

@@ -145,7 +145,9 @@ func Sprites(r *Raster, cellW, cellH int, st *gotv.State, o Opts) []Use {
 		focus := strings.ToLower(pl.Name) == o.Focus
 		add(fmt.Sprintf("arrow:%s:%d", side, dir), 6, x, y, func() Sprite { return arrowSprite(m, teamColor(side), dir) })
 		if o.Floor.Raised(*pl.Pos) {
-			add("raised", 6, x, y-m.dot*2.2, func() Sprite { return raisedSprite(m) })
+			add("raised", 6, x, y-m.dot*2.2, func() Sprite { return chevronSprite(m, false, term.White) })
+		} else if o.Floor.Under(*pl.Pos) {
+			add("under", 6, x, y-m.dot*2.2, func() Sprite { return chevronSprite(m, true, underC) })
 		}
 		blind := math.Ceil(math.Min(pl.Blind, 1.5)/1.5*4) / 4 // 4 steps, so few sprites
 		team := blinded(teamColor(side), blind*1.5)
@@ -238,14 +240,18 @@ func arrowSprite(m sizes, team term.RGB, dir int) Sprite {
 	return Sprite{c.img, n / 2, n / 2}
 }
 
-// raisedSprite is the white ▴ above a player standing above the ground.
-func raisedSprite(m sizes) Sprite {
+// chevronSprite is the ▴ (above the ground) or ▾ (under a floor) over a player.
+func chevronSprite(m sizes, down bool, col term.RGB) Sprite {
 	s := m.dot * 0.8
 	n := int(2*s+2*m.stroke) + 2
 	c := newCanvas(n, n)
 	h := float64(n) / 2
-	c.line(h-s, h+s/2, h, h-s/2, m.stroke, term.White, 1)
-	c.line(h, h-s/2, h+s, h+s/2, m.stroke, term.White, 1)
+	tip, base := h-s/2, h+s/2
+	if down {
+		tip, base = base, tip
+	}
+	c.line(h-s, base, h, tip, m.stroke, col, 1)
+	c.line(h, tip, h+s, base, m.stroke, col, 1)
 	return Sprite{c.img, n / 2, n / 2}
 }
 
