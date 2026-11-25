@@ -253,7 +253,7 @@ func (m *listModel) view() string {
 	for i, f := range m.feeds {
 		state := m.spin.View() + lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(" probing")
 		if s, ok := m.status[f.URL]; ok {
-			text := string(s.State) + " · " + s.Map + matchText(m.match[f.URL])
+			text := string(s.State) + " · " + feeds.MapName(s.Map) + matchText(m.match[f.URL])
 			switch s.State {
 			case feeds.Offline:
 				text = "offline"

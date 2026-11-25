@@ -18,7 +18,7 @@ func TestRoundStatusAboveMap(t *testing.T) {
 	if h := plain(roundStatus(st)); h != "R22 1:18   BOMB 32s · DEFUSING 4.2s " {
 		t.Fatalf("%q", h)
 	}
-	if h := plain(header(st)); h != " Lynn Vision Gaming 9 : 12 Ninjas in Pyjamas  de_ancient" {
+	if h := plain(header(st)); h != " Lynn Vision Gaming 9 : 12 Ninjas in Pyjamas  Ancient" {
 		t.Fatalf("%q", h)
 	}
 	st.Over = true

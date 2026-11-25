@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -97,12 +98,20 @@ func main() {
 		images = term.NewLockedFile(os.Stdout)
 		opts = append(opts, tea.WithOutput(images))
 	}
-	_, err := tea.NewProgram(ui.New(url, images, gfx), opts...).Run()
+	app := ui.New(url, images, gfx)
+	app.Version = version
+	_, err := tea.NewProgram(app, opts...).Run()
 	if images != nil && gfx == term.Kitty {
 		term.PixelMouse(images, false) // images were removed by the app on quit
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	if app.Restart { // updated from inside the app: carry on in the new binary
+		if exe, err := os.Executable(); err == nil {
+			err = syscall.Exec(exe, os.Args, os.Environ())
+			fmt.Fprintln(os.Stderr, "updated; restart gotv-tui to use the new version:", err)
+		}
 	}
 }

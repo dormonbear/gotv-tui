@@ -161,3 +161,27 @@ func Probe(f Feed) Status {
 	}
 	return Status{Feed: f, State: StateOf(s), Map: s.Map}
 }
+
+var mapNames = map[string]string{
+	"de_ancient": "Ancient", "de_anubis": "Anubis", "de_dust2": "Dust II", "de_inferno": "Inferno",
+	"de_mirage": "Mirage", "de_nuke": "Nuke", "de_overpass": "Overpass", "de_train": "Train",
+	"de_vertigo": "Vertigo", "de_cache": "Cache", "de_cobblestone": "Cobblestone", "de_tuscan": "Tuscan",
+	"de_basalt": "Basalt", "de_edin": "Edin", "de_palais": "Palais", "de_whistle": "Whistle",
+	"de_thera": "Thera", "de_mills": "Mills", "de_memento": "Memento", "de_assembly": "Assembly",
+	"de_italy": "Italy", "cs_office": "Office", "cs_italy": "Italy", "ar_baggage": "Baggage", "ar_shoots": "Shoots",
+}
+
+// MapName is a map's display name: "de_dust2" -> "Dust II". Unknown maps lose their
+// mode prefix and get capitalised ("de_newmap" -> "Newmap").
+func MapName(api string) string {
+	if n, ok := mapNames[api]; ok {
+		return n
+	}
+	if i := strings.IndexByte(api, '_'); i > 0 && i < 4 {
+		api = api[i+1:]
+	}
+	if api == "" {
+		return api
+	}
+	return strings.ToUpper(api[:1]) + strings.ReplaceAll(api[1:], "_", " ")
+}

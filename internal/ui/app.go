@@ -2,10 +2,14 @@
 package ui
 
 import (
+	"runtime"
+
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
 	"github.com/dormonbear/gotv-tui/internal/term"
+	"github.com/dormonbear/gotv-tui/internal/update"
 )
 
 type App struct {
@@ -14,6 +18,39 @@ type App struct {
 	w, h  int
 	out   *term.LockedFile // image output; nil draws maps as text
 	gfx   term.Graphics
+
+	Version  string // running version; "dev" skips the update check
+	latest   string // newer release, once the check found one
+	updating bool
+	notice   string // update result
+	Restart  bool   // updated in place: main starts the new binary
+}
+
+type latestMsg string
+
+type updatedMsg struct {
+	msg string
+	err error
+}
+
+func checkUpdate(v string) tea.Cmd {
+	return func() tea.Msg {
+		l, _ := update.Latest(v) // offline or rate-limited: just no notice
+		return latestMsg(l)
+	}
+}
+
+// updateHint is the one-line update notice shown on both screens.
+func (a *App) updateHint() string {
+	switch {
+	case a.updating:
+		return "updating to v" + a.latest + "..."
+	case a.notice != "":
+		return a.notice
+	case a.latest != "":
+		return "v" + a.latest + " available · press u to update"
+	}
+	return ""
 }
 
 // New opens url directly when given, else starts on the source list. With out set
@@ -30,6 +67,10 @@ func pending(url string) *matchModel {
 }
 
 func (a *App) Init() tea.Cmd {
+	return tea.Batch(a.start(), checkUpdate(a.Version))
+}
+
+func (a *App) start() tea.Cmd {
 	if a.out != nil && a.gfx == term.Kitty {
 		term.PixelMouse(a.out, true) // matchModel.pointer reads pixels with kitty graphics
 	}
@@ -56,6 +97,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.list.w = a.w
 		}
 		return a, nil
+	case latestMsg:
+		a.latest = string(msg)
+		return a, nil
+	case updatedMsg:
+		a.updating = false
+		if msg.err != nil {
+			a.notice = "update failed: " + msg.err.Error()
+			return a, nil
+		}
+		if runtime.GOOS == "windows" { // a running .exe can't be replaced and restarted in place
+			a.notice, a.latest = msg.msg+" Restart gotv-tui to use it.", ""
+			return a, nil
+		}
+		a.Restart = true
+		return a, a.quit()
 	case tea.MouseMsg:
 		if a.match != nil {
 			return a, a.match.update(msg)
@@ -65,6 +121,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		k := msg.String()
 		if k == "ctrl+c" {
 			return a, a.quit()
+		}
+		if k == "u" && a.latest != "" && !a.updating && (a.match != nil || !a.list.editing()) {
+			a.updating, a.notice = true, ""
+			v := a.Version
+			return a, func() tea.Msg {
+				msg, err := update.Run(v)
+				return updatedMsg{msg, err}
+			}
 		}
 		if a.match != nil {
 			switch k {
@@ -120,11 +184,17 @@ func (a *App) quit() tea.Cmd {
 }
 
 func (a *App) View() string {
+	hint := a.updateHint()
 	if a.match != nil {
+		a.match.notice = hint
 		return a.match.view()
 	}
 	if a.list != nil {
-		return a.list.view()
+		v := a.list.view()
+		if hint != "" {
+			v += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(hint)
+		}
+		return v
 	}
 	return ""
 }

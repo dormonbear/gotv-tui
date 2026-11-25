@@ -40,3 +40,11 @@ func TestStateOf(t *testing.T) {
 		t.Fatal("StateOf")
 	}
 }
+
+func TestMapName(t *testing.T) {
+	for api, want := range map[string]string{"de_dust2": "Dust II", "de_nuke": "Nuke", "cs_office": "Office", "de_brand_new": "Brand new", "weird": "Weird", "": ""} {
+		if got := MapName(api); got != want {
+			t.Errorf("MapName(%q) = %q, want %q", api, got, want)
+		}
+	}
+}
