@@ -30,6 +30,8 @@ var Presets = []Feed{
 	{Name: "PGL Major · Stream B", URL: "https://cstv.fragnet.net/b"},
 	{Name: "BLAST Major · Stream A", URL: "https://gotv.blast.tv/major-a"},
 	{Name: "BLAST Major · Stream B", URL: "https://gotv.blast.tv/major-b"},
+	{Name: "ESL Major · Stream A", URL: "https://tv.teo.gg/stream-a"},
+	{Name: "ESL Major · Stream B", URL: "https://tv.teo.gg/stream-b"},
 }
 
 // File is where the user's source list is saved (~/.config on every OS).
