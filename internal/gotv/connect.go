@@ -258,12 +258,19 @@ func play(parent, ctx context.Context, p *demoinfocs.Parser, mapName string, tps
 	p.RegisterEventHandler(func(e events.SmokeStart) { smokes[e.GrenadeEntityID] = *vec(e.Position) })
 	p.RegisterEventHandler(func(e events.SmokeExpired) { delete(smokes, e.GrenadeEntityID) })
 
+	// the player hands frames out on a clock; it is stopped and waited for before
+	// play returns, so the last frame reaches h before the caller reports the end
+	stop, stopped := make(chan struct{}), make(chan struct{})
+	defer func() { close(stop); <-stopped }()
 	go func() {
+		defer close(stopped)
 		t := time.NewTicker(playEvery)
 		defer t.Stop()
 		for {
 			select {
 			case <-ctx.Done():
+				return
+			case <-stop:
 				return
 			case now := <-t.C:
 				if h.Delay != nil {
@@ -299,7 +306,8 @@ func play(parent, ctx context.Context, p *demoinfocs.Parser, mapName string, tps
 }
 
 // clean bounds a name from the relay to printable text (see term.Clean).
-func clean(s string) string { return term.Clean(s, 24) }
+// 32: a Steam name's limit, so two long names never get cut to the same text
+func clean(s string) string { return term.Clean(s, 32) }
 
 func name(p *common.Player) string {
 	if p == nil {

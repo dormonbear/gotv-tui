@@ -57,6 +57,11 @@ func betterTerminal(goos string, getenv func(string) string, has func(string) bo
 		}
 		esc := make([]string, len(cmd))
 		for i, a := range cmd { // wt.exe splits its command line on ";" even inside an argument
+			// and a quoted argument ending in \ ("C:\my recs\") reads as an escaped
+			// quote once wt re-parses it; the slash is redundant on a directory, so drop it
+			if strings.Contains(a, " ") && len(a) > 3 {
+				a = strings.TrimRight(a, `\`)
+			}
 			esc[i] = strings.ReplaceAll(a, ";", `\;`)
 		}
 		return "Windows Terminal", exec.Command("wt.exe", esc...)
