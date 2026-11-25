@@ -3,6 +3,7 @@ package ui
 
 import (
 	"runtime"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -19,15 +20,20 @@ type App struct {
 	out   *term.LockedFile // image output; nil draws maps as text
 	gfx   term.Graphics
 
-	Version  string // running version; "dev" skips the update check
-	latest   string // newer release, once the check found one
-	updating bool
-	quitting bool
-	notice   string // update result
-	Restart  bool   // updated in place: main starts the new binary
+	Version     string // running version; "dev" skips the update check
+	latest      string // newer release, once the check found one
+	updating    bool
+	checked     bool // the update check has answered
+	checkFailed bool // offline, rate-limited, ...
+	quitting    bool
+	notice      string // update result
+	Restart     bool   // updated in place: main starts the new binary
 }
 
-type latestMsg string
+type latestMsg struct {
+	v   string // newer release, "" when up to date
+	err error
+}
 
 type updatedMsg struct {
 	msg string
@@ -36,9 +42,25 @@ type updatedMsg struct {
 
 func checkUpdate(v string) tea.Cmd {
 	return func() tea.Msg {
-		l, _ := update.Latest(v) // offline or rate-limited: just no notice
-		return latestMsg(l)
+		l, err := update.Latest(v)
+		return latestMsg{l, err}
 	}
+}
+
+// versionLine is the list's status line: this version and what the update check said.
+func (a *App) versionLine() string {
+	v := "v" + strings.TrimPrefix(a.Version, "v")
+	switch {
+	case a.Version == "" || a.Version == "dev":
+		return dim("source build · no update check")
+	case a.updating || a.notice != "" || a.latest != "":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(v + " · " + a.updateHint())
+	case !a.checked:
+		return dim(v + " · checking for updates...")
+	case a.checkFailed:
+		return dim(v + " · couldn't check for updates")
+	}
+	return dim(v + " · up to date")
 }
 
 // updateHint is the one-line update notice shown on both screens.
@@ -104,7 +126,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, a.match.update(msg.msg)
 	case latestMsg:
-		a.latest = string(msg)
+		a.latest, a.checked, a.checkFailed = msg.v, true, msg.err != nil
 		return a, nil
 	case updatedMsg:
 		a.updating = false
@@ -200,11 +222,7 @@ func (a *App) View() string {
 		return a.match.view()
 	}
 	if a.list != nil {
-		v := a.list.view()
-		if hint != "" {
-			v += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(hint)
-		}
-		return v
+		return a.list.view() + "\n" + a.versionLine()
 	}
 	return ""
 }
