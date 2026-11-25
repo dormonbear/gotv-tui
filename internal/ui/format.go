@@ -179,15 +179,18 @@ func gunName(g string) string {
 	return g
 }
 
+// hpBar is a 14-cell bar with the hp number inside its right end.
 func hpBar(hp int) string {
-	n := min(10, max(0, (hp+5)/10))
-	c := "\x1b[31m"
+	const w = 14
+	n := min(w, max(0, (hp*w+50)/100))
+	bg := "\x1b[41;30m" // red
 	if hp > 60 {
-		c = "\x1b[32m"
+		bg = "\x1b[42;30m"
 	} else if hp > 25 {
-		c = "\x1b[33m"
+		bg = "\x1b[43;30m"
 	}
-	return c + strings.Repeat("█", n) + dimOn + strings.Repeat("░", 10-n) + reset
+	text := []rune(fmt.Sprintf("%*d ", w-1, hp))
+	return bg + string(text[:n]) + "\x1b[48;2;58;62;70;38;2;230;230;230m" + string(text[n:]) + reset
 }
 
 func pad(s string, w int) string { // pad/cut a plain string to exactly w cells
@@ -240,7 +243,7 @@ func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[stri
 		hp := dim("dead          ")
 		gear := ""
 		if p.Alive {
-			hp = hpBar(p.HP) + fmt.Sprintf("%4d", p.HP)
+			hp = hpBar(p.HP)
 			gear = fmt.Sprintf("%-10s ", gunName(p.Gun)) + nadeText(p.Nades)
 		}
 		row := fmt.Sprintf("%s %s %s %6s %3d%3d%3d %5.0f  %s %s", badge, pad(p.Name, 12), hp, fmt.Sprintf("$%d", p.Money), p.Kills, p.Deaths, p.Assists, p.ADR, kit, gear)

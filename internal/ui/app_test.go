@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/dormonbear/gotv-tui/internal/feeds"
 )
 
 func TestUpdateNoticeAndKey(t *testing.T) {
@@ -107,4 +109,32 @@ func TestClickInAnotherPaneKeepsTheDirector(t *testing.T) {
 	if a.match.directing {
 		t.Fatal("a camera key should still take the camera")
 	}
+}
+
+func TestListMouse(t *testing.T) {
+	a := New("", nil, 0)
+	a.list, _ = newList(filepath.Join(t.TempDir(), "feeds.json"))
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	a.list.feeds = []feeds.Feed{{Name: "one", URL: "https://a.example/x"}, {Name: "two", URL: "https://b.example/y"}}
+	view := ansi.Strip(a.list.view(""))
+	rows := strings.Split(view, "\n")
+	if !strings.Contains(rows[a.list.rowY+1], "two") {
+		t.Fatalf("row %d is %q, want the second source", a.list.rowY+1, rows[a.list.rowY+1])
+	}
+	click := func(y int) {
+		a.Update(tea.MouseMsg{X: 5, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	}
+	click(a.list.rowY + 1)
+	if a.list.sel != 1 || a.match != nil {
+		t.Fatal("first click selects")
+	}
+	a.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
+	if a.list.sel != 0 {
+		t.Fatal("wheel moves the selection")
+	}
+	click(a.list.rowY)
+	if a.match == nil {
+		t.Fatal("clicking the selected source opens it")
+	}
+	a.match.close()
 }

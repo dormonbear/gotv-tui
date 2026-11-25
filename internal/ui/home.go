@@ -178,12 +178,14 @@ func (m *listModel) view(status string) string {
 	if len(top)+1+len(lines)+len(footer) > h {
 		top = homeHeader(0)[:1]
 	}
+	m.rowY = len(top) + 2 // the logo, a blank line, the box's top edge
 	lines = append(append(top, ""), lines...)
 	for len(lines)+len(footer) < h { // pin the footer to the bottom
 		lines = append(lines, "")
 	}
 	if over := len(lines) + len(footer) - h; over > 0 { // still too short: drop from the top
-		lines = lines[min(over, len(lines)):]
+		cut := min(over, len(lines))
+		lines, m.rowY = lines[cut:], m.rowY-cut
 	}
 	for i := range lines {
 		lines[i] = ansi.Truncate(lines[i], w, "")
