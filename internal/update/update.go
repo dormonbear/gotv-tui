@@ -2,7 +2,10 @@
 package update
 
 import (
+	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +13,10 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 )
+
+var client = &http.Client{Timeout: 2 * time.Minute} // a stalled download fails instead of hanging
 
 const repo = "dormonbear/gotv-tui"
 
@@ -34,7 +40,7 @@ func get(url string) (*http.Response, error) {
 	}
 	req.Header.Set("User-Agent", "gotv-tui")
 	req.Header.Set("Accept", "application/vnd.github+json")
-	r, err := http.DefaultClient.Do(req)
+	r, err := client.Do(req)
 	if err == nil && r.StatusCode != http.StatusOK {
 		r.Body.Close()
 		return nil, fmt.Errorf("%s: HTTP %s", url, r.Status)
@@ -71,26 +77,35 @@ func Run(current string) (string, error) {
 	if latest == strings.TrimPrefix(current, "v") {
 		return "Already up to date (v" + latest + ").", nil
 	}
-	url := ""
+	url, sums := "", ""
 	for _, a := range rel.Assets {
-		if a.Name == asset+".gz" {
+		switch a.Name {
+		case asset + ".gz":
 			url = a.URL
+		case "SHA256SUMS":
+			sums = a.URL
 		}
 	}
-	if url == "" {
-		return "", fmt.Errorf("release %s has no %s.gz", rel.Tag, asset)
+	if url == "" || sums == "" {
+		return "", fmt.Errorf("release %s has no %s.gz or SHA256SUMS", rel.Tag, asset)
 	}
-	bin, err := get(url)
+	gz, err := fetch(url)
 	if err != nil {
 		return "", err
 	}
-	defer bin.Body.Close()
+	list, err := fetch(sums)
+	if err != nil {
+		return "", err
+	}
+	if err := verify(gz, list, asset+".gz"); err != nil {
+		return "", err
+	}
 	target, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
 	tmp := target + ".new"
-	if err := writeGunzip(tmp, bin.Body); err != nil {
+	if err := writeGunzip(tmp, bytes.NewReader(gz)); err != nil {
 		os.Remove(tmp)
 		return "", err
 	}
@@ -121,4 +136,27 @@ func writeGunzip(path string, r io.Reader) error {
 		return err
 	}
 	return f.Close()
+}
+
+func fetch(url string) ([]byte, error) {
+	r, err := get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Body.Close()
+	return io.ReadAll(r.Body)
+}
+
+// verify checks data against its line ("<sha256>  <name>") in a SHA256SUMS file.
+func verify(data, sums []byte, name string) error {
+	got := sha256.Sum256(data)
+	for _, line := range strings.Split(string(sums), "\n") {
+		if f := strings.Fields(line); len(f) == 2 && strings.TrimPrefix(f[1], "*") == name {
+			if f[0] != hex.EncodeToString(got[:]) {
+				return fmt.Errorf("%s: checksum mismatch, not installing it", name)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("%s: not listed in SHA256SUMS, not installing it", name)
 }
