@@ -23,7 +23,7 @@ func TestRoundStatusAboveMap(t *testing.T) {
 		t.Fatalf("%q", h)
 	}
 	st.Over = true
-	if h := plain(roundStatus(st)); h != "match over" {
+	if h := plain(roundStatus(st)); h != "MATCH OVER" {
 		t.Fatalf("%q", h)
 	}
 }

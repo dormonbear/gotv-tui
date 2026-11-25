@@ -125,7 +125,7 @@ func (m *listModel) details() []string {
 // any form or prompt, and the keys pinned to the bottom with status on the right.
 func (m *listModel) view(status string) string {
 	w, h := max(m.w, 30), max(m.h, 12)
-	title := "Sources"
+	title := "SOURCES"
 	for _, f := range m.feeds {
 		if _, ok := m.status[f.URL]; !ok {
 			title += " " + m.spin.View() + lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render(" refreshing")
@@ -134,9 +134,9 @@ func (m *listModel) view(status string) string {
 	}
 	lines := titled(title, m.sourceRows(w-4), w)
 	if f := m.form; f != nil {
-		head := "Edit source"
+		head := "EDIT SOURCE"
 		if f.index < 0 {
-			head = "Add source"
+			head = "ADD SOURCE"
 		}
 		cur := func(on bool) string {
 			if on {
@@ -151,7 +151,7 @@ func (m *listModel) view(status string) string {
 		body = append(body, dim("enter next/save · tab switch field · esc cancel"))
 		lines = append(lines, titled(head, body, w)...)
 	} else if d := m.details(); d != nil {
-		lines = append(lines, titled("Selected", d, w)...)
+		lines = append(lines, titled("SELECTED", d, w)...)
 	}
 	if m.confirmDelete && m.sel < len(m.feeds) {
 		lines = append(lines, yellow.Render(fmt.Sprintf(" Delete %q? y to confirm, any other key cancels", m.feeds[m.sel].Name)))

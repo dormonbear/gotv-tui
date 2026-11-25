@@ -83,15 +83,15 @@ func historyLine(known []gotv.Outcome, rs []roundResult, current, width int) str
 func buyType(equip, round int) string {
 	switch {
 	case round == 1 || round == 13:
-		return "pistol"
+		return "PISTOL"
 	case equip < 5000:
-		return "eco"
+		return "ECO"
 	case equip < 10000:
-		return "semi-eco"
+		return "SEMI-ECO"
 	case equip < 20000:
-		return "semi-buy"
+		return "SEMI-BUY"
 	}
-	return "full buy"
+	return "FULL BUY"
 }
 
 func money(v int) string {
@@ -110,5 +110,5 @@ func econLine(side gotv.Side, players []gotv.Player, round int) string {
 			equip += p.Equip
 		}
 	}
-	return dim(fmt.Sprintf("     bank %s · equipment %s · ", money(bank), money(equip))) + buyType(equip, round)
+	return dim(fmt.Sprintf("     BANK %s · EQUIP %s · ", money(bank), money(equip))) + buyType(equip, round)
 }

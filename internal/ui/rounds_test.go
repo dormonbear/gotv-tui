@@ -26,13 +26,13 @@ func TestEconomy(t *testing.T) {
 	for _, c := range []struct {
 		equip, round int
 		want         string
-	}{{800, 1, "pistol"}, {3000, 2, "eco"}, {7000, 3, "semi-eco"}, {15000, 4, "semi-buy"}, {24000, 5, "full buy"}, {900, 13, "pistol"}} {
+	}{{800, 1, "PISTOL"}, {3000, 2, "ECO"}, {7000, 3, "SEMI-ECO"}, {15000, 4, "SEMI-BUY"}, {24000, 5, "FULL BUY"}, {900, 13, "PISTOL"}} {
 		if got := buyType(c.equip, c.round); got != c.want {
 			t.Errorf("buyType(%d, %d) = %s, want %s", c.equip, c.round, got, c.want)
 		}
 	}
 	ps := []gotv.Player{{Side: gotv.CT, Money: 4000, Equip: 5200}, {Side: gotv.CT, Money: 7350, Equip: 5100}, {Side: gotv.T, Money: 99999, Equip: 99999}}
-	if got := plain(econLine(gotv.CT, ps, 5)); !strings.Contains(got, "bank $11.3k · equipment $10.3k · semi-buy") {
+	if got := plain(econLine(gotv.CT, ps, 5)); !strings.Contains(got, "BANK $11.3k · EQUIP $10.3k · SEMI-BUY") {
 		t.Fatalf("%q", got)
 	}
 }

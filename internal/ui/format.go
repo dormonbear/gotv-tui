@@ -129,10 +129,10 @@ const (
 )
 
 var (
-	columns        = fmt.Sprintf("%-14s %6s   K  D  A%6s  kit %-11sutil", "hp", "$", "ADR", "weapon")
-	compactColumns = fmt.Sprintf(" %4s %6s%3s%3s weapon", "hp", "$", "K", "D")
+	columns        = fmt.Sprintf("%-14s %6s   K  D  A%6s  KIT %-11sUTIL", "HP", "$", "ADR", "WEAPON")
+	compactColumns = fmt.Sprintf(" %4s %6s%3s%3s WEAPON", "HP", "$", "K", "D")
 	// the stats view (s): match totals instead of the live state
-	statsColumns        = fmt.Sprintf("%3s%3s%3s %4s %5s %4s %4s %4s %4s %3s  %s", "K", "D", "A", "+/-", "ADR", "HS%", "KAS", "KPR", "UD", "EF", "3k 4k 5k")
+	statsColumns        = fmt.Sprintf("%3s%3s%3s %4s %5s %4s %4s %4s %4s %3s  %s", "K", "D", "A", "+/-", "ADR", "HS%", "KAS", "KPR", "UD", "EF", "3K 4K 5K")
 	compactStatsColumns = fmt.Sprintf("%3s%3s %4s %5s %4s %4s", "K", "D", "+/-", "ADR", "HS%", "KAS")
 )
 
@@ -164,7 +164,7 @@ func statsRow(p gotv.Player, compact bool) string {
 
 func title(side gotv.Side, t gotv.Team, w int) string {
 	tail := fmt.Sprintf(" %d", t.Score)
-	room := w - 1 - len(tail) - len(" "+string(side)+" ") // keep one space before "hp"
+	room := w - 1 - len(tail) - len(" "+string(side)+" ") // keep one space before "HP"
 	name := t.Name
 	if ansi.StringWidth(name) > room {
 		name = strings.TrimRight(ansi.Truncate(name, room-1, ""), " ") + "…"
