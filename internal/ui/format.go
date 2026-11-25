@@ -164,12 +164,12 @@ func statsRow(p gotv.Player, compact bool) string {
 
 func title(side gotv.Side, t gotv.Team, w int) string {
 	tail := fmt.Sprintf(" %d", t.Score)
-	room := w - 1 - len(tail) - len(" "+string(side)+" ") // keep one space before "HP"
+	room := w - 1 - len(tail) - 4 // keep one space before "HP"
 	name := t.Name
 	if ansi.StringWidth(name) > room {
 		name = strings.TrimRight(ansi.Truncate(name, room-1, ""), " ") + "…"
 	}
-	return ansi.Truncate(fmt.Sprintf(" %s %s%s%s", side, name, tail, strings.Repeat(" ", w)), w, "")
+	return ansi.Truncate(fmt.Sprintf(" %-2s %s%s%s", side, name, tail, strings.Repeat(" ", w)), w, "")
 }
 
 func gunName(g string) string {
@@ -237,7 +237,7 @@ func TeamTable(side gotv.Side, t gotv.Team, players []gotv.Player, nums map[stri
 		} else {
 			kit += " "
 		}
-		hp := dim("   dead       ")
+		hp := dim("dead          ")
 		gear := ""
 		if p.Alive {
 			hp = hpBar(p.HP) + fmt.Sprintf("%4d", p.HP)

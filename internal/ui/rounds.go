@@ -72,7 +72,7 @@ func historyLine(known []gotv.Outcome, rs []roundResult, current, width int) str
 			cells = append(cells, " ")
 		}
 	}
-	const label = " rounds "
+	const label = " ROUNDS "
 	if room := width - len(label); len(cells) > room { // keep the newest rounds
 		cells = cells[len(cells)-max(room, 0):]
 	}
@@ -110,5 +110,5 @@ func econLine(side gotv.Side, players []gotv.Player, round int) string {
 			equip += p.Equip
 		}
 	}
-	return dim(fmt.Sprintf("     BANK %s · EQUIP %s · ", money(bank), money(equip))) + buyType(equip, round)
+	return dim(fmt.Sprintf("    BANK %s · EQUIP %s · ", money(bank), money(equip))) + buyType(equip, round)
 }

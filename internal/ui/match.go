@@ -446,12 +446,12 @@ func (m *matchModel) logLines(n int) []string {
 	if n <= 0 { // no room left under the scoreboard
 		return nil
 	}
-	lines := []string{bold("GAME LOG")}
+	lines := []string{bold(" GAME LOG")}
 	if len(m.log) == 0 {
-		lines = append(lines, dim("events appear from the moment you connect"))
+		lines = append(lines, dim(" events appear from the moment you connect"))
 	}
 	for i := 0; i < len(m.log) && len(lines) < n; i++ {
-		lines = append(lines, FormatEvent(m.log[i]))
+		lines = append(lines, " "+FormatEvent(m.log[i]))
 	}
 	return lines
 }
