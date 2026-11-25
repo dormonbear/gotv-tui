@@ -62,31 +62,32 @@ func delayNote(url string) string {
 const DemoPrefix = "demo:"
 
 type matchModel struct {
-	url     string
-	ctx     context.Context
-	cancel  context.CancelFunc
-	ch      chan tea.Msg
-	st      *gotv.State
-	log     []gotv.Event  // newest first
-	rounds  []roundResult // results seen since connecting
-	notice  string        // app-wide notice (update available) for the footer
-	stats   bool          // scoreboard shows match stats instead of the live state
-	sound   sound         // a stream's audio played along
-	send    func(tea.Msg, bool)
-	kills   []radar.KillMark
-	status  string
-	assets  *radar.Assets
-	box     radar.Box // the map's own extent
-	frame   radar.Box // box grown to the shape of the map area: what zoom 1 shows
-	levels  []*levelMap
-	loading string    // map being loaded
-	retryAt time.Time // after a failed map download, when to try again
-	aspect  float64   // terminal cell height / width
-	zoom    float64   // camera: 1 = whole map
-	zoomTo  float64   // zoom animates towards this
-	anchor  anchor    // radar point held still while zooming
-	moving  bool      // zoom animation running
-	drag    drag
+	url          string
+	ctx          context.Context
+	cancel       context.CancelFunc
+	ch           chan tea.Msg
+	st           *gotv.State
+	log          []gotv.Event  // newest first
+	rounds       []roundResult // results seen since connecting
+	notice       string        // app-wide notice (update available) for the footer
+	stats        bool          // scoreboard shows match stats instead of the live state
+	directBefore bool          // the director had the camera when the current follow began
+	sound        sound         // a stream's audio played along
+	send         func(tea.Msg, bool)
+	kills        []radar.KillMark
+	status       string
+	assets       *radar.Assets
+	box          radar.Box // the map's own extent
+	frame        radar.Box // box grown to the shape of the map area: what zoom 1 shows
+	levels       []*levelMap
+	loading      string    // map being loaded
+	retryAt      time.Time // after a failed map download, when to try again
+	aspect       float64   // terminal cell height / width
+	zoom         float64   // camera: 1 = whole map
+	zoomTo       float64   // zoom animates towards this
+	anchor       anchor    // radar point held still while zooming
+	moving       bool      // zoom animation running
+	drag         drag
 	// director: picks the shot; the camera follows it while directing
 	dir       *director.Director
 	directing bool
