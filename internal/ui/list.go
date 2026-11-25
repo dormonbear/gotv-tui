@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -17,6 +18,14 @@ import (
 )
 
 type probeMsg feeds.Status
+
+// autoMsg re-probes the list; its loop only continues while the list gets messages,
+// so it stops by itself when a match is open (a new list starts a new loop).
+type autoMsg struct{}
+
+const autoEvery = 30 * time.Second
+
+func autoTick() tea.Cmd { return tea.Tick(autoEvery, func(time.Time) tea.Msg { return autoMsg{} }) }
 
 type peekMsg struct {
 	url string
@@ -48,7 +57,7 @@ var stateColor = map[feeds.State]lipgloss.Color{feeds.Live: "2", feeds.Stale: "3
 func newList(file string) (*listModel, tea.Cmd) {
 	m := &listModel{file: file, feeds: feeds.Load(file), status: map[string]feeds.Status{}, match: map[string]*gotv.Summary{},
 		spin: spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("6"))))}
-	return m, m.refresh()
+	return m, tea.Batch(m.refresh(), autoTick())
 }
 
 // refresh re-probes every source; also restarts the spinner, whose tick loop stops
@@ -57,10 +66,17 @@ func (m *listModel) refresh() tea.Cmd { return tea.Batch(m.spin.Tick, m.probe(m.
 
 // probe clears the rows first so they show a spinner until their answer arrives.
 func (m *listModel) probe(list ...feeds.Feed) tea.Cmd {
-	var cmds []tea.Cmd
 	for _, f := range list {
 		delete(m.status, f.URL)
 		delete(m.match, f.URL)
+	}
+	return quietProbe(list...)
+}
+
+// quietProbe re-checks sources in place: rows keep what they show until the answer.
+func quietProbe(list ...feeds.Feed) tea.Cmd {
+	var cmds []tea.Cmd
+	for _, f := range list {
 		cmds = append(cmds, func() tea.Msg { return probeMsg(feeds.Probe(f)) })
 	}
 	return tea.Batch(cmds...)
@@ -95,9 +111,16 @@ func (m *listModel) editing() bool { return m.form != nil }
 // update returns the url to open, if any.
 func (m *listModel) update(msg tea.Msg) (string, tea.Cmd) {
 	switch msg := msg.(type) {
+	case autoMsg:
+		return "", tea.Batch(quietProbe(m.feeds...), autoTick())
 	case probeMsg:
+		prev, had := m.status[msg.URL]
 		m.status[msg.URL] = feeds.Status(msg)
-		if msg.State == feeds.Live || msg.State == feeds.Stale { // read who is playing
+		if had && (prev.State != msg.State || prev.Map != msg.Map) {
+			delete(m.match, msg.URL) // another match now: don't show the old teams
+		}
+		// read who is playing: live score changes, a finished match only once
+		if msg.State == feeds.Live || (msg.State == feeds.Stale && m.match[msg.URL] == nil) {
 			url := msg.URL
 			return "", func() tea.Msg {
 				s, _ := gotv.Peek(context.Background(), url)
@@ -270,7 +293,7 @@ func (m *listModel) view() string {
 		b.WriteString(red.Render(m.saveErr) + "\n")
 	}
 	if m.form == nil {
-		b.WriteString(dim("↑/↓ select · enter open · a add · e edit · d delete · r refresh · q quit") + "\n")
+		b.WriteString(dim("↑/↓ select · enter open · a add · e edit · d delete · r refresh (auto 30s) · q quit") + "\n")
 	}
 	b.WriteString(dim("sources saved in " + m.file))
 	return b.String()

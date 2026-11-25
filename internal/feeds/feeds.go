@@ -26,7 +26,6 @@ var Presets = []Feed{
 	{Name: "PGL Major · Stream B", URL: "https://cstv.fragnet.net/b"},
 	{Name: "BLAST Major · Stream A", URL: "https://gotv.blast.tv/major-a"},
 	{Name: "BLAST Major · Stream B", URL: "https://gotv.blast.tv/major-b"},
-	{Name: "Challengermode Major · Primary", URL: "https://cstv.challengermode.com/major/primary"},
 }
 
 // File is where the user's source list is saved (~/.config on every OS).
