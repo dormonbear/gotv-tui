@@ -75,6 +75,7 @@ type matchModel struct {
 	sound        sound         // a stream's audio played along
 	send         func(tea.Msg, bool)
 	kills        []radar.KillMark
+	blasts       []radar.Blast // HE and flash pops this round
 	status       string
 	assets       *radar.Assets
 	box          radar.Box // the map's own extent
@@ -189,13 +190,19 @@ func (m *matchModel) close() {
 // applyEvent appends to the log and tracks this round's kills for the map.
 func (m *matchModel) applyEvent(e gotv.Event, now time.Time) {
 	m.fx.onEvent(e, m.st, now)
+	if e.Kind == gotv.EvBlast {
+		if e.To != nil {
+			m.blasts = append(m.blasts, radar.Blast{Nade: e.Nade, Pos: *e.To, At: now})
+		}
+		return
+	}
 	m.log = append([]gotv.Event{e}, m.log...)
 	if len(m.log) > logLimit {
 		m.log = m.log[:logLimit]
 	}
 	switch {
 	case e.Kind == gotv.EvRoundStart:
-		m.kills = nil
+		m.kills, m.blasts = nil, nil
 	case e.Kind == gotv.EvRoundEnd:
 		m.recordRound(e.Round, e)
 	case e.Kind == gotv.EvKill && e.To != nil:
@@ -379,6 +386,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			Names:      m.zoom >= namesFrom,
 			Focus:      m.focus,
 			Boom:       m.fx.boom(time.Now()),
+			Blasts:     m.blasts,
 		}
 		var lines []string
 		if m.images() || m.wholeFrames() { // map and markers are terminal images: the text is blank

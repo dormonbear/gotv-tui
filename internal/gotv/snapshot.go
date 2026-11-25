@@ -124,7 +124,7 @@ func snapshot(p *demoinfocs.Parser, mapName string, smokes map[int]Vec) State {
 		adrOf, stats := roundStats(pl, played)
 		s.Players = append(s.Players, Player{
 			Name: clean(pl.Name), Side: side, Pos: pos, Yaw: float64(pl.ViewDirectionX()),
-			Alive: pl.IsAlive(), HP: pl.Health(), Armor: pl.Armor(), Helmet: pl.HasHelmet(), Defuser: pl.HasDefuseKit(),
+			Alive: pl.IsAlive(), Blind: pl.FlashDurationTimeRemaining().Seconds(), HP: pl.Health(), Armor: pl.Armor(), Helmet: pl.HasHelmet(), Defuser: pl.HasDefuseKit(),
 			Money: pl.Money(), Equip: pl.EquipmentValueCurrent(), Kills: pl.Kills(), Deaths: pl.Deaths(), Assists: pl.Assists(), ADR: adrOf, Stats: stats,
 			Gun: gun, Nades: nades, HasBomb: bomb,
 		})

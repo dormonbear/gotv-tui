@@ -236,6 +236,7 @@ type Opts struct {
 	Names      bool   // label players by name where it fits (zoomed in)
 	Focus      string // followed player (lowercase): drawn highlighted
 	Boom       *Boom  // a C4 explosion in progress
+	Blasts     []Blast
 }
 
 // Draw overlays the markers on this level over the static base, as ANSI rows.
@@ -338,6 +339,11 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 			}
 		}
 	}
+	for _, b := range o.Blasts {
+		if rad, a, c, ok := b.fx(o.Now.Sub(b.At).Seconds()); ok && here(b.Pos) {
+			tint(b.Pos, rad, c, a)
+		}
+	}
 	lineBits := map[int]byte{} // kill lines as braille dots: a thin line, not a staircase of cells
 	for _, k := range o.Kills {
 		if o.Now.Sub(k.At) > killShow || !here(k.To) {
@@ -407,7 +413,7 @@ func Draw(r *Raster, base *Base, st *gotv.State, o Opts) []string {
 			if pl.HasBomb {
 				fg = red
 			}
-			c := teamColor(pl.Side)
+			c := blinded(teamColor(pl.Side), pl.Blind)
 			if strings.ToLower(pl.Name) == o.Focus {
 				c = term.White // the followed player stands out
 			}
@@ -561,3 +567,31 @@ const (
 	DetailFrom = 1.5
 	DetailStep = 90.0
 )
+
+// Blast is an HE or flashbang going off.
+type Blast struct {
+	Nade gotv.Nade
+	Pos  gotv.Vec
+	At   time.Time
+}
+
+// fx is the blast's flash at age seconds: world radius, strength, colour (ok=false when over).
+func (b Blast) fx(age float64) (rad, a float64, c term.RGB, ok bool) {
+	dur, r0, r1, c := 0.55, 50., 350., boomC // HE: orange shock wave, about its damage radius
+	if b.Nade == gotv.Flash {
+		dur, r0, r1, c = 0.4, 40., 260., term.White
+	}
+	if age < 0 || age >= dur {
+		return 0, 0, c, false
+	}
+	t := age / dur
+	return r0 + (r1-r0)*(1-(1-t)*(1-t)), 0.9 * (1 - t), c, true
+}
+
+// blinded whitens a player's colour while they're flashed (fully for the last 1.5 s+).
+func blinded(c term.RGB, left float64) term.RGB {
+	if left <= 0 {
+		return c
+	}
+	return term.Mix(c, term.White, math.Min(1, left/1.5))
+}

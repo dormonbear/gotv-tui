@@ -41,6 +41,7 @@ type Player struct {
 	Gun     string // primary if carried, else pistol
 	Nades   []Nade // one entry per grenade
 	HasBomb bool
+	Blind   float64 // seconds of flash blindness left
 }
 
 // Stats are a player's match totals, summed from the per-round stats.
@@ -126,6 +127,7 @@ const (
 	EvPlant      EventKind = "plant"
 	EvDefuse     EventKind = "defuse"
 	EvExplode    EventKind = "explode"
+	EvBlast      EventKind = "blast" // an HE or flash going off at To; not a log line
 )
 
 // Event is one game-log line; only the fields of its Kind are set.
@@ -138,6 +140,7 @@ type Event struct {
 	Headshot, Wallbang       bool
 	ThroughSmoke, NoScope    bool
 	Blind                    bool
+	Nade                     Nade // blast
 	From, To                 *Vec
 	// roundStart: the round starting; roundEnd: the round that ended
 	Round int
