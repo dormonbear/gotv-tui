@@ -82,3 +82,29 @@ func TestVersionLineStates(t *testing.T) {
 		t.Fatal("dev builds don't check")
 	}
 }
+
+func TestClickInAnotherPaneKeepsTheDirector(t *testing.T) {
+	a := New("", nil, 0)
+	a.match = testMatch(false)
+	a.match.view()
+	a.match.toggleDirector()
+	// what Ghostty sends for a click in the split pane above ours (pixel reports, y < 0)
+	for _, k := range []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune("["), Alt: true},
+		{Type: tea.KeyRunes, Runes: []rune("<0;2256;-6M")},
+		{Type: tea.KeyRunes, Runes: []rune("<0;-17;-20m")},
+	} {
+		a.Update(k)
+	}
+	if !a.match.directing {
+		t.Fatal("a click in another pane turned the director off")
+	}
+	a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}) // not a camera key either
+	if !a.match.directing {
+		t.Fatal("an unrelated key turned the director off")
+	}
+	a.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	if a.match.directing {
+		t.Fatal("a camera key should still take the camera")
+	}
+}
