@@ -106,7 +106,9 @@ type State struct {
 	Freeze      bool
 	Warmup      bool
 	Paused      bool
-	Over        bool // match finished
+	Pause       string  // what kind, e.g. "T TIMEOUT", "TECH PAUSE", "PAUSED"
+	PauseLeft   float64 // seconds left of a team's timeout; < 0 when it has none
+	Over        bool    // match finished
 	Bomb        *Bomb
 	Players     []Player
 	Utility     []Utility

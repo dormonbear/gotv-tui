@@ -62,3 +62,14 @@ func TestStatsView(t *testing.T) {
 		t.Errorf("compact stats row %q (%d wide)", compact, len([]rune(compact)))
 	}
 }
+
+func TestPauseBadge(t *testing.T) {
+	st := &gotv.State{Round: 9, SecondsLeft: 15, Freeze: true, Paused: true, Pause: "T TIMEOUT", PauseLeft: 27.3}
+	if h := plain(roundStatus(st)); !strings.Contains(h, "T TIMEOUT 0:28") || !strings.Contains(h, "0:15") {
+		t.Fatalf("%q: want the round clock and the timeout counting down", h)
+	}
+	st = &gotv.State{Round: 9, SecondsLeft: -1, Paused: true, Pause: "PAUSED", PauseLeft: -1}
+	if h := plain(roundStatus(st)); !strings.Contains(h, " PAUSED ") {
+		t.Fatalf("%q: an admin pause has no clock but is shown", h)
+	}
+}
