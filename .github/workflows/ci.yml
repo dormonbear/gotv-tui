@@ -26,3 +26,24 @@ jobs:
           for t in darwin/arm64 linux/amd64 windows/amd64; do
             GOOS=${t%/*} GOARCH=${t#*/} go build -o /dev/null .
           done
+
+  # The Windows build is cross-compiled for releases; this runs it for real.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - run: go build -o gotv-tui.exe .
+      - name: smoke
+        shell: pwsh
+        run: |
+          $v = .\gotv-tui.exe --version
+          if ($LASTEXITCODE -ne 0 -or -not $v) { throw "--version failed" }
+          .\gotv-tui.exe --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "--help failed" }
+          .\gotv-tui.exe replay does-not-exist 2>$null
+          if ($LASTEXITCODE -ne 1) { throw "replay of a missing dir should exit 1, got $LASTEXITCODE" }
+          "ok: $v"
