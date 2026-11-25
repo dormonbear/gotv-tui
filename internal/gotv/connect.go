@@ -16,6 +16,7 @@ import (
 
 	"github.com/dormonbear/gotv-tui/internal/feeds"
 	"github.com/dormonbear/gotv-tui/internal/playback"
+	"github.com/dormonbear/gotv-tui/internal/record"
 	"github.com/dormonbear/gotv-tui/internal/term"
 )
 
@@ -96,6 +97,16 @@ func Connect(ctx context.Context, url string, h Handlers) {
 var relayClient = &http.Client{Timeout: 30 * time.Second, Transport: capped{http.DefaultTransport}}
 
 const maxFragment = 64 << 20
+
+// RecordTo also saves every relay fragment fetched from now on under dir.
+func RecordTo(dir string) error {
+	rt, err := record.Transport(dir, relayClient.Transport)
+	if err != nil {
+		return err
+	}
+	relayClient.Transport = rt
+	return nil
+}
 
 type capped struct{ rt http.RoundTripper }
 

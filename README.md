@@ -29,6 +29,7 @@ No game client, no account, no scraping: one ~4 MB binary for macOS, Linux and W
 - **Source list** of relays with live status and who is playing, refreshed every 30 s.
 - **Adapts to the window**: side by side on a wide terminal, stacked on a narrow one
   or a phone, with a compact scoreboard when space is tight.
+- **Record and replay** a match: `gotv-tui record <url>`, `gotv-tui replay <dir>`.
 - **Self-updating**: `gotv-tui update`.
 
 ## Install
@@ -67,8 +68,14 @@ gotv-tui update
 gotv-tui                                  # pick a relay from the source list
 gotv-tui https://cstv.fragnet.net/a       # open a relay directly
 gotv-tui 'playcast "https://cstv.fragnet.net/a"'   # pasted as published
+gotv-tui record https://cstv.fragnet.net/a   # watch and save to ./gotv-<time>/
+gotv-tui replay gotv-20261125-190000        # watch a saved match later
 gotv-tui --version
 ```
+
+A recording is the relay's own fragments plus when each arrived, so a replay plays
+at the broadcast's pace and looks exactly like the live match (handy for matches you
+missed, or for developing without a live game).
 
 ### Finding a relay
 
@@ -115,7 +122,7 @@ delay, not gotv-tui.
 | `0` | whole map |
 | `d`, click the switch | auto director on/off (on by default) |
 | click a player | follow them (on the map or the scoreboard); click again or elsewhere to stop |
-| `b` | back to the source list |
+| `b`, `esc` | back to the source list |
 | `q`, `ctrl+c` | quit |
 
 Any manual zoom or pan hands the camera back to you.

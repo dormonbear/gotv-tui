@@ -23,6 +23,7 @@ Code layout:
 | `internal/ui` | Bubble Tea screens: source list and match view |
 | `internal/feeds` | saved relay list and probing |
 | `internal/update` | `gotv-tui update` self-update |
+| `internal/record` | `record` / `replay`: saves relay fragments, serves them back as a local relay |
 
 Keep changes small and focused; add a test for any non-trivial logic. Live behaviour
 (the map, the camera) is easiest to check against a running relay, so please say in
