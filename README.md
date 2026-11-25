@@ -30,6 +30,8 @@ No game client, no account, no scraping: one ~4 MB binary for macOS, Linux and W
 - **Source list** of relays with live status and who is playing, refreshed every 30 s.
 - **Adapts to the window**: side by side on a wide terminal, stacked on a narrow one
   or a phone, with a compact scoreboard when space is tight.
+- **Listen along**: play a stream's audio (the official broadcast or a co-streamer)
+  and line it up with the radar; tap `t` when the commentary calls a kill.
 - **Record and replay** a match: `gotv-tui record <url>`, `gotv-tui replay <dir>`.
 - **Play demo files** (`.dem`), at any speed: `gotv-tui demo <file> [x]`.
 - **Self-updating**: `gotv-tui update`.
@@ -124,12 +126,31 @@ delay, not gotv-tui.
 | drag, `←↑↓→`, `hjkl` | pan |
 | `0` | whole map |
 | `d`, click the switch | auto director on/off (on by default) |
+| `v` | audio: play a stream's sound along (URL, or `bili <room>`, `twitch <name>`, `douyin <room>`; empty stops) |
+| `[` `]` / `{` `}` | audio sync: shift by 1 s / 0.1 s |
+| `t` | audio sync: press as a kill is called; lines up on the nearest kill |
 | `s` | scoreboard: live state ↔ match stats (+/-, ADR, HS%, KAS%, KPR, utility damage, enemies flashed, 3k/4k/5k) |
 | click a player | follow them (on the map or the scoreboard); click again or elsewhere to stop |
 | `b`, `esc` | back to the source list |
 | `q`, `ctrl+c` | quit |
 
 Any manual zoom or pan hands the camera back to you.
+
+## Listening along
+
+`v` plays a live stream's sound next to the radar (no video): the official broadcast
+on Twitch or YouTube, or a co-streamer on Bilibili or Douyin, or any direct stream
+URL. It needs [yt-dlp](https://github.com/yt-dlp/yt-dlp) and
+[FFmpeg](https://ffmpeg.org) on your PATH (`brew install yt-dlp ffmpeg`).
+
+Streams and CSTV run on different delays, so line them up: press `t` the moment the
+commentary calls a kill, and gotv-tui shifts by the gap to the nearest kill (one it
+has shown, or one about to show); repeat to refine, or nudge with `[` `]` (1 s) and
+`{` `}` (0.1 s). If the audio is later than the match data the radar waits for it;
+if it is earlier, the audio is held back.
+
+Huya and Douyu aren't supported yet: their stream links need signing that yt-dlp
+currently can't do.
 
 ## Terminal support
 
