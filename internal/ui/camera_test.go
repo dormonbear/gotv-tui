@@ -248,8 +248,8 @@ func TestNarrowScreensStackTheLayout(t *testing.T) {
 		if strings.Contains(plain(lines[1]), "ADR") == compact {
 			t.Fatalf("%dx%d: compact=%v but header %q", m.w, m.h, compact, plain(lines[1]))
 		}
-		// header, CT title, dgt, T title, s1n: the switch is the next row
-		if m.switchY != 5 || !strings.Contains(plain(lines[5]), "DIRECTOR") {
+		// header, CT title, dgt, CT economy, T title, s1n, T economy: the switch is next
+		if m.switchY != 7 || !strings.Contains(plain(lines[7]), "DIRECTOR") {
 			t.Fatalf("%dx%d: switch at row %d: %q", m.w, m.h, m.switchY, plain(lines[m.switchY]))
 		}
 		m.mouse(tea.MouseMsg{X: m.switchX + 1, Y: m.switchY, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})

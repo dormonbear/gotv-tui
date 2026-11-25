@@ -54,7 +54,8 @@ type matchModel struct {
 	cancel  context.CancelFunc
 	ch      chan tea.Msg
 	st      *gotv.State
-	log     []gotv.Event // newest first
+	log     []gotv.Event  // newest first
+	rounds  []roundResult // results seen since connecting
 	kills   []radar.KillMark
 	status  string
 	assets  *radar.Assets
@@ -154,6 +155,8 @@ func (m *matchModel) applyEvent(e gotv.Event, now time.Time) {
 	switch {
 	case e.Kind == gotv.EvRoundStart:
 		m.kills = nil
+	case e.Kind == gotv.EvRoundEnd && m.st != nil:
+		m.recordRound(m.st.Round, e) // the state still shows the round that just ended
 	case e.Kind == gotv.EvKill && e.To != nil:
 		m.kills = append(m.kills, radar.KillMark{From: e.From, To: *e.To, Victim: e.Victim.Side, Headshot: e.Headshot, At: now})
 	}
@@ -163,6 +166,9 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case stateMsg:
 		s := gotv.State(msg)
+		if m.st != nil && (s.Map != m.st.Map || s.Round < m.st.Round-1) {
+			m.rounds = nil // another match
+		}
 		m.st = &s
 		m.fx.onState(m.st, time.Now())
 		m.direct()
@@ -360,6 +366,9 @@ func (m *matchModel) panel(nums map[string]int, compact bool) []string {
 		return []string{dim(" " + m.status + " · waiting for game state...")}
 	}
 	lines := []string{header(m.st)}
+	if h := historyLine(m.rounds, m.st.Round, m.panelW); h != "" {
+		lines = append(lines, h)
+	}
 	m.rowPlayer = map[int]string{}
 	for _, side := range []struct {
 		s gotv.Side
@@ -370,6 +379,7 @@ func (m *matchModel) panel(nums map[string]int, compact bool) []string {
 			m.rowPlayer[top+i] = strings.ToLower(p.Name)
 		}
 		lines = append(lines, TeamTable(side.s, side.t, m.st.Players, nums, m.focus, compact)...)
+		lines = append(lines, econLine(side.s, m.st.Players, m.st.Round))
 	}
 	return lines
 }
