@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/dormonbear/gotv-tui/internal/audio"
 	"github.com/dormonbear/gotv-tui/internal/director"
 	"github.com/dormonbear/gotv-tui/internal/feeds"
 	"github.com/dormonbear/gotv-tui/internal/gotv"
@@ -168,6 +169,7 @@ func newMatch(url string, w, h int) (*matchModel, tea.Cmd) {
 	}
 	// the director runs by default; any manual camera move takes over
 	m.directing, m.dir, m.moving = true, director.New(), true
+	m.sound.auto.on = true
 	return m, tea.Batch(m.wait(), tick(), animTick())
 }
 
@@ -230,6 +232,7 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		}
 		m.floor.Observe(s.Players)
 		m.st = &s
+		m.recordClock(m.st, time.Now())
 		m.fx.onState(m.st, time.Now())
 		m.direct()
 		if (m.assets == nil || m.assets.Map != s.Map) && m.loading != s.Map && s.Map != "" && s.Map != m.noRadar && time.Now().After(m.retryAt) {
@@ -239,6 +242,9 @@ func (m *matchModel) update(msg tea.Msg) tea.Cmd {
 		return m.wait()
 	case eventMsg:
 		m.applyEvent(gotv.Event(msg), time.Now())
+		return m.wait()
+	case clockReadMsg:
+		m.onClockRead(audio.ClockRead(msg))
 		return m.wait()
 	case soundStatusMsg:
 		m.status = term.Clean(string(msg), 120)
@@ -599,6 +605,9 @@ func (m *matchModel) focusName() string {
 // hint when off. Clicking it toggles too.
 func (m *matchModel) directorSwitch(width int) string {
 	var sw, note string
+	if b := m.soundBadge(); b != "" {
+		note = "  " + b
+	}
 	pre := ""
 	if m.st != nil {
 		pre = " " + roundStatus(m.st) + "   "

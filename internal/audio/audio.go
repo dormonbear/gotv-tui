@@ -74,7 +74,7 @@ func (p *Player) spawn() {
 	p.status("audio: finding the stream...")
 	go func() {
 		defer close(done)
-		url, headers, err := resolve(ctx, p.src)
+		url, headers, err := resolve(ctx, p.src, "bestaudio/best")
 		if err != nil {
 			if ctx.Err() == nil {
 				p.status("audio: " + err.Error())
@@ -117,11 +117,11 @@ func (p *Player) spawn() {
 	}()
 }
 
-// resolve asks yt-dlp for the stream's media URL and the headers it must be
+// resolve asks yt-dlp for the stream's media URL in format and the headers it must be
 // fetched with.
-func resolve(ctx context.Context, src string) (string, string, error) {
+func resolve(ctx context.Context, src, format string) (string, string, error) {
 	var stderr strings.Builder
-	cmd := exec.CommandContext(ctx, "yt-dlp", "-q", "--no-warnings", "-f", "bestaudio/best", "-j", src)
+	cmd := exec.CommandContext(ctx, "yt-dlp", "-q", "--no-warnings", "-f", format, "-j", src)
 	cmd.Stderr = &limited{w: &stderr, n: 2000}
 	out, err := cmd.Output()
 	if err != nil {
