@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -10,33 +11,47 @@ import (
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/dormonbear/gotv-tui/internal/audio"
+	"github.com/dormonbear/gotv-tui/internal/gotv"
 )
 
-// The data shows round 5 counting down from 100 s; the stream shows the same
-// clock 42 s later. Two agreeing reads must set the offset to +42.
+// The data shows two rounds counting down; the stream shows the same clock 42 s
+// later. Reads from one round alone fit every round, so nothing moves until reads
+// from both rounds agree.
 func TestAutoSyncFindsOffset(t *testing.T) {
 	m := &matchModel{}
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	m.sound.auto = autoSync{on: true, cancel: cancel}
 	t0 := time.Unix(1000, 0)
-	for i := 0; i <= 200; i++ { // 4 samples a second for 50 s
-		at := t0.Add(time.Duration(i) * 250 * time.Millisecond)
-		m.sound.auto.hist = append(m.sound.auto.hist, clockSample{at, 5, 100 - float64(i)*0.25})
+	at := func(s float64) time.Time { return t0.Add(time.Duration(s * float64(time.Second))) }
+	// round 5: 115 -> 40 s left over data time 0..75; round 6: 115 -> 0 over 90..205
+	for i := 0; i <= 820; i++ {
+		ts := float64(i) * 0.25
+		switch {
+		case ts <= 75:
+			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{at(ts), 5, 115 - ts})
+		case ts >= 90:
+			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{at(ts), 6, 115 - (ts - 90)})
+		}
 	}
-	// the HUD shows 90 from left=91 to 90, i.e. data time t0+9..10 s; mid 9.5 s
-	m.onClockRead(audio.ClockRead{At: t0.Add(51500 * time.Millisecond), Round: 5, Secs: 90})
+	read := func(dataT float64, round int) { // what the stream shows 42 s after the data
+		left := 115 - dataT
+		if round == 6 {
+			left = 115 - (dataT - 90)
+		}
+		m.onClockRead(audio.ClockRead{At: at(dataT + 42 - 0.5 + (left - float64(int(left)))), Secs: int(left)})
+	}
+	for _, d := range []float64{10, 20, 30, 40} {
+		read(d, 5)
+	}
 	if m.sound.offset != 0 {
-		t.Fatalf("one read must not move it, got %v", m.sound.offset)
+		t.Fatalf("one round's reads must not move it, got %v", m.sound.offset)
 	}
-	m.onClockRead(audio.ClockRead{At: t0.Add(61500 * time.Millisecond), Round: 5, Secs: 80})
-	if math.Abs(m.sound.offset-42) > 0.05 {
+	for _, d := range []float64{100, 110} {
+		read(d, 6)
+	}
+	if math.Abs(m.sound.offset-42) > 0.15 {
 		t.Fatalf("offset = %v, want 42", m.sound.offset)
-	}
-	// a read from another round, or not reached yet, is held, not used
-	m.onClockRead(audio.ClockRead{At: t0.Add(70 * time.Second), Round: 6, Secs: 80})
-	if len(m.sound.auto.reads) != 1 || m.sound.offset != 42 {
-		t.Fatalf("reads %d offset %v", len(m.sound.auto.reads), m.sound.offset)
 	}
 }
 
@@ -62,5 +77,29 @@ func TestSoundBadge(t *testing.T) {
 	b := xansi.Strip(m.soundBadge())
 	if !strings.Contains(b, "HUYA 123321") || !strings.Contains(b, "-2.5s") || !strings.Contains(b, "AUTO") {
 		t.Fatalf("badge %q", b)
+	}
+}
+
+// The relay's round number can change mid-countdown; only the clock jumping
+// starts a new countdown.
+func TestAutoSyncRoundsFollowTheClock(t *testing.T) {
+	m := &matchModel{}
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.sound.auto = autoSync{on: true, cancel: cancel}
+	t0 := time.Unix(1000, 0)
+	for i, st := range []gotv.State{
+		{Round: 21, SecondsLeft: 80}, {Round: 21, SecondsLeft: 79}, {Round: 22, SecondsLeft: 78}, // number moves, clock runs on
+		{Round: 22, SecondsLeft: 15}, // freeze time: the clock jumped
+		{Round: 22, SecondsLeft: 14},
+	} {
+		m.recordClock(&st, t0.Add(time.Duration(i)*time.Second))
+	}
+	var runs []int
+	for _, h := range m.sound.auto.hist {
+		runs = append(runs, h.round)
+	}
+	if fmt.Sprint(runs) != "[0 0 0 1 1]" {
+		t.Fatalf("runs %v", runs)
 	}
 }

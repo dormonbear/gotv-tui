@@ -156,11 +156,14 @@ on Twitch or YouTube, a co-streamer on Huya or Bilibili, or any direct media URL
 [FFmpeg](https://ffmpeg.org) on your PATH (`brew install yt-dlp ffmpeg`).
 
 Streams and CSTV run on different delays. **Auto sync** (on by default, `a` toggles it)
-lines them up by itself: it reads the round clock and "Round N" off the stream's
-picture (key frames only, via [Tesseract](https://github.com/tesseract-ocr/tesseract),
-`brew install tesseract`) and finds when the match data showed the same moment,
-re-checking as the match goes on. It needs a stream showing the broadcast HUD; it is
-accurate to about a second. Tesseract is optional: without it, or to fine-tune, press `t` the moment the
+lines them up by itself: it reads the round clock off the stream's picture (key frames
+only) and finds when the match data showed the same second. A clock value comes back
+every round, so it settles once reads from two rounds agree, and keeps re-checking as
+the match goes on. Nothing extra to install: the digits are recognised in-process
+(glyph priors and method from [Fy1Sync](https://github.com/Fy1ng/Fy1Sync)), then
+learned from the stream's own font within seconds. It needs a stream showing the
+broadcast HUD and is accurate to about a second. To fine-tune, or for streams without
+the HUD, press `t` the moment the
 commentary calls a kill, and gotv-tui shifts by the gap to the nearest kill (one it
 has shown, or one about to show); repeat to refine, or nudge with `[` `]` (1 s) and
 `{` `}` (0.1 s). If the audio is later than the match data the radar waits for it;
@@ -253,4 +256,6 @@ It only reads broadcasts that organizers publish for public viewing.
 
 ## License
 
-[MIT](LICENSE). Radar images are Valve's and are downloaded at run time, not shipped.
+[GPL-3.0](LICENSE). Releases up to v0.35.0 were MIT. The round-clock reader is ported
+from [Fy1Sync](https://github.com/Fy1ng/Fy1Sync) (GPL-3.0), including its glyph priors.
+Radar images are Valve's and are downloaded at run time, not shipped.
