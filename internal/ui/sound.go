@@ -31,6 +31,7 @@ type sound struct {
 	history   []string          // the chosen platform's rooms that played, for ↑/↓
 	histAt    int               // -1: not browsing the history
 	pending   [2]string         // platform and room just started; saved once it plays
+	muted     bool
 	auto      autoSync
 }
 
@@ -101,8 +102,7 @@ func (m *matchModel) soundKey(k string) (tea.Cmd, bool) {
 		}
 		s.manual()
 		step := map[string]float64{"[": -1, "]": 1, "{": -0.1, "}": 0.1}[k]
-		s.offset = math.Round((s.offset+step)*10) / 10
-		s.apply()
+		m.setOffset(math.Round((s.offset+step)*10) / 10)
 		return nil, true
 	case "t":
 		if s.player != nil {
@@ -140,6 +140,9 @@ func (m *matchModel) typeSource(msg tea.KeyMsg) tea.Cmd {
 			s.last = map[string]string{}
 		}
 		s.last[p.name] = v
+		if off, ok := loadOffset(m.url, typed); ok { // lined up before: start lined up
+			s.offset = off
+		}
 		m.startAudio(typed, [2]string{p.name, v})
 		return nil
 	case "up", "down":
@@ -185,8 +188,7 @@ func (m *matchModel) tapSync(now time.Time) {
 		m.status = "tap sync: no kill within 20 s of now; press t right as a kill is called"
 		return
 	}
-	m.sound.offset = math.Round((m.sound.offset+best)*10) / 10
-	m.sound.apply()
+	m.setOffset(math.Round((m.sound.offset+best)*10) / 10)
 	m.status = fmt.Sprintf("tap sync: moved %+.1fs", best)
 }
 
@@ -322,7 +324,12 @@ func (m *matchModel) soundBadge() string {
 	if s.auto.cancel != nil {
 		label += "AUTO "
 	}
-	return soundOn.Render(label) + m.streamClock()
+	badge := soundOn.Render(label)
+	if s.muted {
+		badge = switchOff.Render(fmt.Sprintf(" ✕ MUTED %s ", strings.ToUpper(s.src)))
+	}
+	m.badgeW = lipgloss.Width(badge)
+	return badge + m.streamClock()
 }
 
 // streamClock is what the stream shows as heard now ("STREAM R18 0:58"), next to
@@ -345,4 +352,22 @@ func (m *matchModel) streamClock() string {
 		round = fmt.Sprintf("R%d ", r)
 	}
 	return fmt.Sprintf(" STREAM %s%d:%02d", round, secs/60, secs%60) + sync
+}
+
+// setOffset applies a new offset and remembers it for this relay and stream.
+func (m *matchModel) setOffset(v float64) {
+	m.sound.offset = v
+	m.sound.apply()
+	saveOffset(m.url, m.sound.src, v)
+}
+
+// toggleMute stops or resumes the sound; the stream keeps being received, so it
+// comes back lined up.
+func (m *matchModel) toggleMute() {
+	s := &m.sound
+	if s.player == nil {
+		return
+	}
+	s.muted = !s.muted
+	s.player.SetMuted(s.muted)
 }

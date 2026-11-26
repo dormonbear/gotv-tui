@@ -162,7 +162,12 @@ every round, so it settles once reads from two rounds agree, and keeps re-checki
 the match goes on. Nothing extra to install: the digits are recognised in-process
 (glyph priors and method from [Fy1Sync](https://github.com/Fy1ng/Fy1Sync)), then
 learned from the stream's own font within seconds. It needs a stream showing the
-broadcast HUD and is accurate to about a second. To fine-tune, or for streams without
+broadcast HUD and is accurate to about a second. The offset found is remembered per relay and stream
+(`~/.config/gotv-tui/offsets.json`), so reopening the same pair starts lined up.
+When the offset changes, the sound received over the last ten minutes is kept, so
+the audio jumps straight to the right moment (replaying a stretch if it has to go
+later) instead of going quiet. Click the audio badge above the map to mute it; it
+comes back lined up. To fine-tune, or for streams without
 the HUD, press `t` the moment the
 commentary calls a kill, and gotv-tui shifts by the gap to the nearest kill (one it
 has shown, or one about to show); repeat to refine, or nudge with `[` `]` (1 s) and
