@@ -209,3 +209,23 @@ func (a *autoSync) streamNow(now time.Time, audioDelay time.Duration) (round, se
 	}
 	return 0, 0, false
 }
+
+// lockTarget is the stream moment the data has to reach before auto sync can lock
+// (the last of the first reads that named their round), when the data hasn't
+// reached it yet; nil otherwise.
+func (a *autoSync) lockTarget() *audio.ClockRead {
+	n := 0
+	for i := range a.reads {
+		r := &a.reads[i]
+		if r.Round == 0 || r.Secs < roundTrust {
+			continue
+		}
+		if len(a.candidates(*r)) > 0 {
+			return nil // the data has reached the stream's reads: locking is up to the vote
+		}
+		if n++; n == syncKnownReads {
+			return r
+		}
+	}
+	return nil
+}

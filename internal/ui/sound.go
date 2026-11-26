@@ -343,6 +343,9 @@ func (m *matchModel) streamClock() string {
 	sync := ""
 	if !a.locked {
 		sync = dim(" syncing…")
+		if r := a.lockTarget(); r != nil { // the stream is ahead: say what we wait for
+			sync = dim(fmt.Sprintf(" stream ahead · locks when the radar reaches R%d %d:%02d", r.Round, r.Secs/60, r.Secs%60))
+		}
 	}
 	if !ok {
 		return dim(" STREAM --:--") + sync

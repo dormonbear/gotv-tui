@@ -132,3 +132,22 @@ func TestAutoSyncWithRoundNumbers(t *testing.T) {
 		t.Fatalf("stream now R%d %d %v", r, secs, ok)
 	}
 }
+
+// While the stream is ahead, the badge says which moment the radar must reach.
+func TestLockTargetWhileStreamAhead(t *testing.T) {
+	a := &autoSync{}
+	t0 := time.Unix(1000, 0)
+	for i := 0; i < 40; i++ { // data: round 13, 76 s left and counting
+		a.hist = append(a.hist, clockSample{t: t0.Add(time.Duration(i) * 250 * time.Millisecond), round: 0, id: 13, left: 86 - float64(i)*0.25})
+	}
+	for _, s := range []int{55, 54, 52, 51} { // stream: round 14
+		a.reads = append(a.reads, audio.ClockRead{At: t0, Secs: s, Round: 14})
+	}
+	if r := a.lockTarget(); r == nil || r.Round != 14 || r.Secs != 52 {
+		t.Fatalf("lock target %+v, want R14 0:52", r)
+	}
+	a.reads = []audio.ClockRead{{At: t0, Secs: 80, Round: 13}} // data has passed this one
+	if a.lockTarget() != nil {
+		t.Fatal("once the data has reached the reads there is nothing to wait for")
+	}
+}
