@@ -155,8 +155,15 @@ func (a *autoSync) candidates(r audio.ClockRead) []syncCand {
 // well: reads that named their round settle it alone; otherwise reads from at least
 // two countdowns must agree.
 func (a *autoSync) vote() (float64, bool) {
+	named := false // the stream's round number can be read: trust only reads that name it
+	for _, r := range a.reads {
+		named = named || r.Round > 0
+	}
 	var all []syncCand
 	for i, r := range a.reads {
+		if named && (r.Round == 0 || r.Secs < roundTrust) {
+			continue // short clocks also fit freeze times; leave them to HUDs without a round number
+		}
 		for _, c := range a.candidates(r) {
 			c.read = i
 			all = append(all, c)

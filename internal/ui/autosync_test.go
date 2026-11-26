@@ -171,3 +171,30 @@ func TestNoLockOnAFreezeCountdown(t *testing.T) {
 		t.Fatalf("locked on a freeze countdown: offset %v", m.sound.offset)
 	}
 }
+
+// When the stream's round number is readable, short clocks (which also fit the
+// data's freeze times) never vote: they once locked a stream that was ahead onto
+// a positive offset.
+func TestShortClocksDontVoteWhenRoundsAreRead(t *testing.T) {
+	m := &matchModel{}
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.sound.auto = autoSync{on: true, cancel: cancel}
+	t0 := time.Unix(1000, 0)
+	at := func(s float64) time.Time { return t0.Add(time.Duration(s * float64(time.Second))) }
+	for r := 0; r < 2; r++ { // two freeze times (20 s) in the data, 100 s apart
+		for i := 0; i <= 80; i++ {
+			ts := float64(r*100) + float64(i)*0.25
+			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: r, id: 20 + r, left: 20 - float64(i)*0.25})
+		}
+	}
+	m.sound.auto.reads = append(m.sound.auto.reads, audio.ClockRead{At: at(300), Secs: 70, Round: 22}) // the round number is read
+	for r := 0; r < 2; r++ {                                                                           // the stream's round ends (short clocks) fit those freezes 30 s later
+		for _, s := range []int{12, 9, 6} {
+			m.onClockRead(audio.ClockRead{At: at(float64(r*100) + 20 - float64(s) - 0.5 + 30), Secs: s})
+		}
+	}
+	if m.sound.auto.locked {
+		t.Fatalf("locked on short clocks: offset %v", m.sound.offset)
+	}
+}
