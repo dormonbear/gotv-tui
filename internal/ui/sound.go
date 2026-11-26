@@ -322,5 +322,27 @@ func (m *matchModel) soundBadge() string {
 	if s.auto.cancel != nil {
 		label += "AUTO "
 	}
-	return soundOn.Render(label)
+	return soundOn.Render(label) + m.streamClock()
+}
+
+// streamClock is what the stream shows as heard now ("STREAM R18 0:58"), next to
+// the data's own round and clock, so a gap between them is plain to see.
+func (m *matchModel) streamClock() string {
+	a := &m.sound.auto
+	if a.cancel == nil {
+		return ""
+	}
+	r, secs, ok := a.streamNow(time.Now(), time.Duration(max(-m.sound.offset, 0)*float64(time.Second)))
+	sync := ""
+	if !a.locked {
+		sync = dim(" syncing…")
+	}
+	if !ok {
+		return dim(" STREAM --:--") + sync
+	}
+	round := ""
+	if r > 0 {
+		round = fmt.Sprintf("R%d ", r)
+	}
+	return fmt.Sprintf(" STREAM %s%d:%02d", round, secs/60, secs%60) + sync
 }

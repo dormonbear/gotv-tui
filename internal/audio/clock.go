@@ -15,8 +15,9 @@ import (
 // ClockRead is the round clock read off the stream's picture, and when that
 // picture played (local time).
 type ClockRead struct {
-	At   time.Time
-	Secs int // the clock as shown, e.g. 73 for 01:13
+	At    time.Time
+	Secs  int // the clock as shown, e.g. 73 for 01:13
+	Round int // "Round N" under the clock, 0 if not read
 }
 
 // The HUD strip read: the top-centre of the picture, where CS2 broadcasts put the
@@ -78,7 +79,7 @@ func WatchClock(ctx context.Context, src string, read func(ClockRead)) error {
 		at := clock.local(p, time.Now())
 		img := &image.Gray{Pix: frame, Stride: stripW, Rect: image.Rect(0, 0, stripW, stripH)}
 		if secs, ok := reader.read(p, img); ok {
-			read(ClockRead{At: at, Secs: secs})
+			read(ClockRead{At: at, Secs: secs, Round: reader.readRound(img)})
 		}
 	}
 }

@@ -77,6 +77,8 @@ type clockReader struct {
 	hasLast bool
 	jump    *[2]float64 // a read that broke the pace, kept until the next confirms it
 	seen    []token     // the last frame's colon and digit glyphs, to keep as variants
+	// "Round N" under the clock, believed once two frames in a row agree
+	round, roundSeen int
 }
 
 // keep adds the glyphs of a frame read as v as more variants of their characters
@@ -105,6 +107,28 @@ const (
 	sessionCap = 12  // templates kept per character
 	relock     = 120 // missed frames (about 2 minutes of key frames) before searching again
 )
+
+// readRound returns the round number under the clock, 0 until it reads the same
+// twice in a row.
+func (c *clockReader) readRound(img *image.Gray) int {
+	n := readRound(img, c.lay, c.session)
+	switch {
+	case n == 0:
+		return c.roundIf(2)
+	case n == c.round:
+		c.roundSeen++
+	default:
+		c.round, c.roundSeen = n, 1
+	}
+	return c.roundIf(2)
+}
+
+func (c *clockReader) roundIf(seen int) int {
+	if c.roundSeen >= seen {
+		return c.round
+	}
+	return 0
+}
 
 // read returns the clock at stream time pts.
 func (c *clockReader) read(pts float64, img *image.Gray) (int, bool) {
@@ -753,4 +777,80 @@ func blobs(img *image.Gray) []box {
 
 func (c *clockReader) fits(pts float64, v int) bool {
 	return c.hasLast && pts > c.lastPts && pts-c.lastPts <= 10 && math.Abs(float64(c.lastV-v)-(pts-c.lastPts)) <= 1.5
+}
+
+// roundLevel: "Round N" is set in a thinner weight than the clock; a lower ink
+// level thickens it back towards the clock digits it is matched against.
+const roundLevel = 120
+
+// readRound reads "Round N" on the line under the clock: the glyphs after the
+// widest gap on that line, matched against this stream's learned clock digits
+// (same typeface, other size and weight). 0 when unsure.
+func readRound(img *image.Gray, l *layout, session []prior) int {
+	if l == nil {
+		return 0
+	}
+	h := l.y1 - l.y0 + 1
+	x0, x1 := max(0, l.digits[0]-2*h), min(img.Rect.Dx()-1, l.digits[len(l.digits)-1]+2*h)
+	y0, y1 := l.y1+1, min(img.Rect.Dy()-1, l.y1+h*3/2)
+	if x0 >= x1 || y0 >= y1 {
+		return 0
+	}
+	var segs []box // cut at the usual level, so the backdrop stays out
+	for _, b := range segments(img, y0, y1) {
+		if b.x0 >= x0 && b.x1 <= x1 {
+			segs = append(segs, b)
+		}
+	}
+	if len(segs) < 2 {
+		return 0
+	}
+	cut, gap := 0, 0
+	for i := 1; i < len(segs); i++ {
+		if g := segs[i].x0 - segs[i-1].x1; g > gap {
+			cut, gap = i, g
+		}
+	}
+	digits := segs[cut:]
+	if len(digits) == 0 || len(digits) > 2 {
+		return 0
+	}
+	n := 0
+	for _, d := range digits {
+		b := box{max(0, d.x0-2), max(0, d.y0-2), min(img.Rect.Dx()-1, d.x1+2), min(img.Rect.Dy()-1, d.y1+2)}
+		band := image.NewGray(image.Rect(0, 0, b.w(), b.h())) // the glyph at roundLevel
+		for y := range b.h() {
+			for x := range b.w() {
+				if img.Pix[(b.y0+y)*img.Stride+b.x0+x] >= roundLevel {
+					band.Pix[y*band.Stride+x] = 255
+				}
+			}
+		}
+		g, ok := trim(band, box{0, 0, b.w() - 1, b.h() - 1})
+		if !ok {
+			return 0
+		}
+		m := normalise(band, g)
+		nh := holes(&m)
+		best := map[byte]float64{}
+		for _, p := range session {
+			if p.char >= '0' && p.char <= '9' && p.holes == nh {
+				best[p.char] = max(best[p.char], iou(&m, &p.m))
+			}
+		}
+		var top, second float64
+		var ch byte
+		for c, v := range best {
+			if v > top {
+				top, second, ch = v, top, c
+			} else if v > second {
+				second = v
+			}
+		}
+		if top < 0.8 || top-second < 0.08 {
+			return 0
+		}
+		n = n*10 + int(ch-'0')
+	}
+	return n
 }

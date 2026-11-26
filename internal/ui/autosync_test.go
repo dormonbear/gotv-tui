@@ -29,9 +29,9 @@ func TestAutoSyncFindsOffset(t *testing.T) {
 		ts := float64(i) * 0.25
 		switch {
 		case ts <= 75:
-			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{at(ts), 5, 115 - ts})
+			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: 5, id: 5, left: 115 - ts})
 		case ts >= 90:
-			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{at(ts), 6, 115 - (ts - 90)})
+			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: 6, id: 6, left: 115 - (ts - 90)})
 		}
 	}
 	read := func(dataT float64, round int) { // what the stream shows 42 s after the data
@@ -101,5 +101,34 @@ func TestAutoSyncRoundsFollowTheClock(t *testing.T) {
 	}
 	if fmt.Sprint(runs) != "[0 0 0 1 1]" {
 		t.Fatalf("runs %v", runs)
+	}
+}
+
+// Reads that name their round settle the offset within that round alone, and the
+// stream's clock as heard now is shown next to the data's.
+func TestAutoSyncWithRoundNumbers(t *testing.T) {
+	m := &matchModel{}
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.sound.auto = autoSync{on: true, cancel: cancel}
+	t0 := time.Unix(1000, 0)
+	at := func(s float64) time.Time { return t0.Add(time.Duration(s * float64(time.Second))) }
+	for r := 0; r < 3; r++ { // rounds 7, 8, 9 each counting 115 -> 40 over 75 s, 90 s apart
+		for i := 0; i <= 300; i++ {
+			ts := float64(r*90) + float64(i)*0.25
+			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: r, id: 7 + r, left: 115 - float64(i)*0.25})
+		}
+	}
+	// round 8 seen on the stream 30 s later than the data showed it
+	for _, d := range []float64{10, 14, 18, 22} {
+		left := 115 - d
+		m.onClockRead(audio.ClockRead{At: at(90 + d + 30 - 0.5 + (left - float64(int(left)))), Secs: int(left), Round: 8})
+	}
+	if math.Abs(m.sound.offset-30) > 0.15 || !m.sound.auto.locked {
+		t.Fatalf("offset %v locked %v", m.sound.offset, m.sound.auto.locked)
+	}
+	r, secs, ok := m.sound.auto.streamNow(at(90+22+30+2), 0)
+	if !ok || r != 8 || secs != 115-22-2 {
+		t.Fatalf("stream now R%d %d %v", r, secs, ok)
 	}
 }
