@@ -11,8 +11,10 @@ import (
 const tapeKeep = 10 * time.Minute
 
 type chunk struct {
-	at time.Time
-	b  []byte
+	at     time.Time // when it arrived
+	pts    float64   // its stream time, if hasPTS
+	hasPTS bool
+	b      []byte
 }
 
 // tape is the stream's sound as it arrived, kept for tapeKeep. Chunks are
@@ -26,10 +28,11 @@ type tape struct {
 
 func newTape() *tape { return &tape{more: make(chan struct{})} }
 
-func (t *tape) add(at time.Time, b []byte) {
+func (t *tape) add(c chunk) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.chunks = append(t.chunks, chunk{at, b})
+	at := c.at
+	t.chunks = append(t.chunks, c)
 	for len(t.chunks) > 0 && at.Sub(t.chunks[0].at) > tapeKeep {
 		t.chunks = t.chunks[1:]
 		t.base++
@@ -38,12 +41,12 @@ func (t *tape) add(at time.Time, b []byte) {
 	t.more = make(chan struct{})
 }
 
-// seek is the number of the first chunk that arrived at or after at.
-func (t *tape) seek(at time.Time) int {
+// seek is the number of the first chunk due at or after at, by when.
+func (t *tape) seek(at time.Time, when func(chunk) time.Time) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for i, c := range t.chunks {
-		if !c.at.Before(at) {
+		if !when(c).Before(at) {
 			return t.base + i
 		}
 	}

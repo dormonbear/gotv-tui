@@ -29,6 +29,7 @@ type clockSample struct {
 	round int       // which unbroken countdown: a round's live time, or its freeze time
 	id    int       // the round by the score (rounds played + 1), as the HUD numbers it
 	left  float64
+	live  bool // the round's own clock, not the freeze time or a pause before it
 }
 
 type clockReadMsg audio.ClockRead
@@ -58,8 +59,12 @@ func (m *matchModel) startAutoSync(src string) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	a.cancel = cancel
 	send := m.send
+	tl := &audio.Timeline{} // the clock reads and the sound share one notion of stream time
+	if m.sound.player != nil {
+		m.sound.player.SetTimeline(tl)
+	}
 	go func() {
-		err := audio.WatchClock(ctx, src, func(r audio.ClockRead) { send(clockReadMsg(r), false) })
+		err := audio.WatchClock(ctx, src, tl, func(r audio.ClockRead) { send(clockReadMsg(r), false) })
 		if err != nil && ctx.Err() == nil {
 			send(soundStatusMsg("auto sync: "+err.Error()), false)
 		}
@@ -85,7 +90,7 @@ func (m *matchModel) recordClock(s *gotv.State, now time.Time) {
 			a.run++
 		}
 	}
-	a.hist = append(a.hist, clockSample{t, a.run, s.CT.Score + s.T.Score + 1, s.SecondsLeft})
+	a.hist = append(a.hist, clockSample{t, a.run, s.CT.Score + s.T.Score + 1, s.SecondsLeft, !s.Freeze})
 	for len(a.hist) > 0 && t.Sub(a.hist[0].t) > syncKeep {
 		a.hist = a.hist[1:]
 	}
@@ -134,6 +139,11 @@ func (a *autoSync) candidates(r audio.ClockRead) []syncCand {
 		if known && (p.id != r.Round || q.id != r.Round) {
 			continue
 		}
+		// a long clock on the stream is the round's own: never match it to a freeze
+		// time or a timeout counting through the same seconds
+		if r.Secs >= roundTrust && !(p.live && q.live) {
+			continue
+		}
 		f := (p.left - target) / (p.left - q.left)
 		t := p.t.Add(time.Duration(f * float64(q.t.Sub(p.t))))
 		out = append(out, syncCand{off: r.At.Sub(t).Seconds(), round: p.round, known: known})
@@ -145,8 +155,15 @@ func (a *autoSync) candidates(r audio.ClockRead) []syncCand {
 // well: reads that named their round settle it alone; otherwise reads from at least
 // two countdowns must agree.
 func (a *autoSync) vote() (float64, bool) {
+	named := false // the stream's round number can be read: trust only reads that name it
+	for _, r := range a.reads {
+		named = named || r.Round > 0
+	}
 	var all []syncCand
 	for i, r := range a.reads {
+		if named && (r.Round == 0 || r.Secs < roundTrust) {
+			continue // short clocks also fit freeze times; leave them to HUDs without a round number
+		}
 		for _, c := range a.candidates(r) {
 			c.read = i
 			all = append(all, c)
@@ -208,4 +225,24 @@ func (a *autoSync) streamNow(now time.Time, audioDelay time.Duration) (round, se
 		return r.Round, r.Secs - int(gone.Seconds()), true
 	}
 	return 0, 0, false
+}
+
+// lockTarget is the stream moment the data has to reach before auto sync can lock
+// (the last of the first reads that named their round), when the data hasn't
+// reached it yet; nil otherwise.
+func (a *autoSync) lockTarget() *audio.ClockRead {
+	n := 0
+	for i := range a.reads {
+		r := &a.reads[i]
+		if r.Round == 0 || r.Secs < roundTrust {
+			continue
+		}
+		if len(a.candidates(*r)) > 0 {
+			return nil // the data has reached the stream's reads: locking is up to the vote
+		}
+		if n++; n == syncKnownReads {
+			return r
+		}
+	}
+	return nil
 }
