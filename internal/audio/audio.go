@@ -54,6 +54,19 @@ type Player struct {
 	pdone  chan struct{}
 	muted  bool
 	tl     atomic.Pointer[Timeline] // the stream's pts -> local time, shared with the clock reader
+	hold   atomic.Int64             // while the sound is held back: when it starts (unix ns), -1 waiting for the timeline
+}
+
+// Holding says whether the stream is connected but the sound is held back to
+// line up: until when, or pending if it still waits for the stream's timing.
+func (p *Player) Holding() (until time.Time, pending, ok bool) {
+	switch h := p.hold.Load(); {
+	case h < 0:
+		return time.Time{}, true, true
+	case h > 0:
+		return time.Unix(0, h), false, true
+	}
+	return time.Time{}, false, false
 }
 
 // SetTimeline times the sound by the stream's own clock, as mapped by tl (shared
@@ -212,6 +225,10 @@ func (p *Player) play(from time.Time) {
 		// with a timeline coming (auto sync), wait for it rather than play by arrival
 		// and then pause seconds to fall in line once it is there
 		began := time.Now()
+		defer p.hold.Store(0)
+		if p.timelinePending() {
+			p.hold.Store(-1)
+		}
 		for p.timelinePending() && time.Since(began) < timelineWait {
 			select {
 			case <-time.After(100 * time.Millisecond):
@@ -226,12 +243,16 @@ func (p *Player) play(from time.Time) {
 				return
 			}
 			if wait := time.Until(p.when(c).Add(p.Delay())); wait > 0 {
+				if wait > time.Second { // a real hold (lining up), not the steady pacing
+					p.hold.Store(time.Now().Add(wait).UnixNano())
+				}
 				select {
 				case <-time.After(wait):
 				case <-ctx.Done():
 					return
 				}
 			}
+			p.hold.Store(0)
 			if _, err := in.Write(c.b); err != nil {
 				if ctx.Err() == nil {
 					p.status("audio stopped: " + firstLine(strings.TrimSpace(playErr.String()+"\nplayer exited")))

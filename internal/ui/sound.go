@@ -348,6 +348,15 @@ func (m *matchModel) streamClock() (clock, note string) {
 			sync = dim(fmt.Sprintf(" stream ahead · locks when the radar reaches R%d %d:%02d", r.Round, r.Secs/60, r.Secs%60))
 		}
 	}
+	if s := m.sound.player; s != nil { // connected, the sound still held back: say so
+		if until, pending, held := s.Holding(); held {
+			sync = dim(" connected · reading the stream's timing…")
+			if !pending {
+				left := max(0, int(time.Until(until).Seconds()+0.5))
+				sync = dim(fmt.Sprintf(" connected · sound starts in %d:%02d to line up", left/60, left%60))
+			}
+		}
+	}
 	clock = dim(" STREAM --:--")
 	if ok {
 		round := ""

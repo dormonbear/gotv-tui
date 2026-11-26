@@ -1,6 +1,9 @@
 package audio
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestSource(t *testing.T) {
 	for in, want := range map[string]string{
@@ -17,5 +20,21 @@ func TestSource(t *testing.T) {
 		if _, err := Source(bad); err == nil {
 			t.Errorf("Source(%q) accepted", bad)
 		}
+	}
+}
+
+func TestHolding(t *testing.T) {
+	var p Player
+	if _, _, ok := p.Holding(); ok {
+		t.Fatal("idle player reported a hold")
+	}
+	p.hold.Store(-1)
+	if _, pending, ok := p.Holding(); !ok || !pending {
+		t.Fatal("timeline wait not reported")
+	}
+	at := time.Now().Add(90 * time.Second)
+	p.hold.Store(at.UnixNano())
+	if until, pending, ok := p.Holding(); !ok || pending || !until.Equal(time.Unix(0, at.UnixNano())) {
+		t.Fatal("hold time not reported")
 	}
 }
