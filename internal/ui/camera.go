@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -117,6 +118,9 @@ func (m *matchModel) cameraKey(k string) tea.Cmd {
 	}
 	if k == "d" {
 		return m.toggleDirector()
+	}
+	if i := strings.Index("1234567890", k); len(k) == 1 && i >= 0 && m.st != nil {
+		return m.followKey(i)
 	}
 	if m.focus != "" {
 		switch k {

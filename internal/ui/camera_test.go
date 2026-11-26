@@ -380,3 +380,25 @@ func TestShakyClickIsNotADrag(t *testing.T) {
 		t.Fatal("a real drag should take the camera")
 	}
 }
+
+func TestNumberKeysFollowPlayers(t *testing.T) {
+	m := testMatch(false)
+	m.st = &gotv.State{Players: []gotv.Player{
+		{Name: "b", Side: gotv.CT, Alive: true, Pos: &gotv.Vec{}},
+		{Name: "a", Side: gotv.CT, Alive: true, Pos: &gotv.Vec{}},
+		{Name: "z", Side: gotv.T, Alive: true, Pos: &gotv.Vec{}},
+		{Name: "y", Side: gotv.T, Alive: true, Pos: &gotv.Vec{}},
+	}}
+	for _, c := range []struct{ key, want string }{
+		{"2", "b"}, // CT #2 (badges sort by name)
+		{"6", "y"}, // T #1
+		{"7", "z"}, // T #2
+		{"7", ""},  // same key again: stop
+		{"0", ""},  // T #5: nobody there
+	} {
+		m.cameraKey(c.key)
+		if m.focus != c.want {
+			t.Fatalf("key %s: focus %q, want %q", c.key, m.focus, c.want)
+		}
+	}
+}

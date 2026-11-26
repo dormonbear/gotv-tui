@@ -10,6 +10,7 @@ var helpKeys = [][2]string{
 	{"q · ctrl+c", "quit"},
 	{"b · esc", "back to the sources"},
 	{"s", "scoreboard: live state / match stats"},
+	{"1-0", "follow a player: 1-5 CT, 6-0 T (badge number); again to stop"},
 	{"d · click the switch", "auto director on / off"},
 	{"click a player / row", "follow them; click again or elsewhere to stop"},
 	{"wheel · + -", "zoom"},

@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/dormonbear/gotv-tui/internal/gotv"
 	"github.com/dormonbear/gotv-tui/internal/radar"
 )
 
@@ -90,4 +91,20 @@ func (m *matchModel) playerAt(x, y float64) string {
 		}
 	}
 	return best
+}
+
+// followKey follows a player by number key: 1-5 the CT table's badges, 6-0 the
+// T table's. The same key again stops following.
+func (m *matchModel) followKey(i int) tea.Cmd {
+	side, n := gotv.CT, i%5+1
+	if i >= 5 {
+		side = gotv.T
+	}
+	nums := PlayerNumbers(m.st.Players)
+	for _, p := range m.st.Players {
+		if name := strings.ToLower(p.Name); p.Side == side && nums[name] == n {
+			return m.focusOn(name)
+		}
+	}
+	return nil
 }
