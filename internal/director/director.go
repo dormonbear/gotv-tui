@@ -40,6 +40,7 @@ const (
 // Shot is what the camera should frame, in world units.
 type Shot struct {
 	X, Y   float64
+	Z      float64 // mean height of what is framed: which level of a two-level map
 	Radius float64 // half-size of the area to keep in view
 	Reason string
 }
@@ -264,5 +265,9 @@ func (d *Director) frame(st *gotv.State) *Shot {
 		x0, y0, x1, y1 = min(x0, p.X), min(y0, p.Y), max(x1, p.X), max(y1, p.Y)
 	}
 	r := max(minRadius, max(x1-x0, y1-y0)/2+margin)
-	return &Shot{X: (x0 + x1) / 2, Y: (y0 + y1) / 2, Radius: r, Reason: d.cur.reason}
+	z := 0.0
+	for _, p := range pts {
+		z += p.Z
+	}
+	return &Shot{X: (x0 + x1) / 2, Y: (y0 + y1) / 2, Z: z / float64(len(pts)), Radius: r, Reason: d.cur.reason}
 }

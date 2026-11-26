@@ -32,9 +32,63 @@ func animTick() tea.Cmd { return tea.Tick(frameTime, func(time.Time) tea.Msg { r
 func (m *matchModel) resetCamera() {
 	m.zoom, m.zoomTo, m.moving = 1, 1, false
 	m.camX, m.camY = m.frame.Center()
+	m.camLevel, m.parked = 0, [2]parked{}
 }
 
-// camera is the radar area on screen. Both levels share it so they stay aligned.
+// parked is a level's view while the camera drives the other level of a
+// two-level map; unset means the whole map.
+type parked struct {
+	x, y, zoom float64
+	set        bool
+}
+
+// driveLevel hands the camera to level i, parking the other where it is (or,
+// with wholeRest, sending it back to the whole map).
+func (m *matchModel) driveLevel(i int, wholeRest bool) {
+	if i == m.camLevel || len(m.levels) < 2 {
+		return
+	}
+	m.parked[m.camLevel] = parked{m.camX, m.camY, m.zoom, !wholeRest}
+	p := m.parked[i]
+	if !p.set {
+		p.x, p.y = m.frame.Center()
+		p.zoom = 1
+	}
+	m.camX, m.camY, m.zoom, m.zoomTo = p.x, p.y, p.zoom, p.zoom
+	m.vel, m.settling, m.camLevel = [3]float64{}, false, i
+}
+
+// levelView is level i's radar area on screen.
+func (m *matchModel) levelView(i int) radar.Box {
+	if i == m.camLevel {
+		return m.camera()
+	}
+	if p := m.parked[i]; p.set {
+		return m.frame.View(p.x, p.y, p.zoom)
+	}
+	cx, cy := m.frame.Center()
+	return m.frame.View(cx, cy, 1) // whole map
+}
+
+func (m *matchModel) levelZoom(i int) float64 {
+	if i == m.camLevel {
+		return m.zoom
+	}
+	if p := m.parked[i]; p.set {
+		return p.zoom
+	}
+	return 1
+}
+
+// levelOf is the level (index into levels) a world height is on.
+func (m *matchModel) levelOf(z float64) int {
+	if len(m.levels) < 2 || m.assets == nil || !radar.IsLower(z, m.assets.Overview.LowerBelow) {
+		return 0
+	}
+	return 1
+}
+
+// camera is the radar area the camera shows (on the level it drives).
 func (m *matchModel) camera() radar.Box {
 	v := m.frame.View(m.camX, m.camY, m.zoom)
 	m.camX, m.camY = v.Center() // clamped at the map edge: panning back starts right away
@@ -76,7 +130,7 @@ func (m *matchModel) panCells(dx, dy float64) {
 	if len(m.levels) == 0 {
 		return
 	}
-	r := m.levels[0].r
+	r := m.levels[min(m.camLevel, len(m.levels)-1)].r
 	x0, y0 := r.RadarAt(0, 0)
 	x1, y1 := r.RadarAt(2, 4) // one cell
 	m.zoomTo, m.moving = m.zoom, false
@@ -88,14 +142,20 @@ func (m *matchModel) panCells(dx, dy float64) {
 // map. Whole numbers are a cell's top-left, so callers with cell-only mouse
 // positions add 0.5 to aim at the middle.
 func (m *matchModel) radarAt(x, y float64) (float64, float64, bool) {
-	for _, lv := range m.levels {
+	ax, ay, _, ok := m.levelAt(x, y)
+	return ax, ay, ok
+}
+
+// levelAt is radarAt plus which level the point is on.
+func (m *matchModel) levelAt(x, y float64) (float64, float64, int, bool) {
+	for i, lv := range m.levels {
 		cx, cy := x-float64(lv.sx), y-float64(lv.sy)
 		if cx >= 0 && cy >= 0 && cx < float64(lv.base.CW) && cy < float64(lv.base.CH) {
 			ax, ay := lv.r.RadarAt(cx*2, cy*4) // 2x4 braille dots per cell
-			return ax, ay, true
+			return ax, ay, i, true
 		}
 	}
-	return 0, 0, false
+	return 0, 0, 0, false
 }
 
 // pointer is the mouse position in cells: exact when the terminal reports pixels
@@ -204,7 +264,8 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 	switch {
 	case e.Button == tea.MouseButtonLeft && e.Action == tea.MouseActionPress:
 		x, y := m.pointer(e)
-		if _, _, ok := m.radarAt(x, y); ok {
+		if _, _, lvl, ok := m.levelAt(x, y); ok {
+			m.driveLevel(lvl, false) // each level of a two-level map has its own view
 			m.drag = drag{on: true, x: x, y: y, x0: x, y0: y}
 		}
 		return nil
@@ -235,8 +296,12 @@ func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
 	default:
 		return nil
 	}
-	ax, ay, ok := m.radarAt(m.pointer(e))
-	if !ok { // off the map: zoom around the middle
+	x, y := m.pointer(e)
+	if _, _, lvl, ok := m.levelAt(x, y); ok {
+		m.driveLevel(lvl, false)
+	}
+	ax, ay, ok := m.radarAt(x, y) // after the switch: this level's own view
+	if !ok {                      // off the map: zoom around the middle
 		ax, ay = m.camera().Center()
 	}
 	return m.zoomAround(f, ax, ay)
@@ -315,6 +380,9 @@ func (m *matchModel) follow() tea.Cmd {
 	}
 	if m.assets == nil { // the map isn't loaded yet: keep the loop waiting for it
 		return animTick()
+	}
+	if m.shot != nil {
+		m.driveLevel(m.levelOf(m.shot.Z), true)
 	}
 	tx, ty, tz := m.shotTarget()
 	v := m.camera()
