@@ -333,11 +333,12 @@ func (m *matchModel) soundBadge() string {
 }
 
 // streamClock is what the stream shows as heard now ("STREAM R18 0:58"), next to
-// the data's own round and clock, so a gap between them is plain to see.
-func (m *matchModel) streamClock() string {
+// the data's own round and clock, so a gap between them is plain to see; note is
+// what auto sync is doing ("syncing…").
+func (m *matchModel) streamClock() (clock, note string) {
 	a := &m.sound.auto
 	if a.cancel == nil {
-		return ""
+		return "", ""
 	}
 	r, secs, ok := a.streamNow(time.Now(), time.Duration(max(-m.sound.offset, 0)*float64(time.Second)))
 	sync := ""
@@ -347,14 +348,15 @@ func (m *matchModel) streamClock() string {
 			sync = dim(fmt.Sprintf(" stream ahead · locks when the radar reaches R%d %d:%02d", r.Round, r.Secs/60, r.Secs%60))
 		}
 	}
-	if !ok {
-		return dim(" STREAM --:--") + sync
+	clock = dim(" STREAM --:--")
+	if ok {
+		round := ""
+		if r > 0 {
+			round = fmt.Sprintf("R%d ", r)
+		}
+		clock = fmt.Sprintf(" STREAM %s%d:%02d", round, secs/60, secs%60)
 	}
-	round := ""
-	if r > 0 {
-		round = fmt.Sprintf("R%d ", r)
-	}
-	return fmt.Sprintf(" STREAM %s%d:%02d", round, secs/60, secs%60) + sync
+	return clock, sync
 }
 
 // setOffset applies a new offset and remembers it for this relay and stream.

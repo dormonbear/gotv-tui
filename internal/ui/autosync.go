@@ -22,6 +22,7 @@ type autoSync struct {
 	reads  []audio.ClockRead // recent stream reads
 	run    int               // the data clock's current unbroken countdown
 	locked bool              // the offset has been set from the stream at least once
+	floor  bool              // the HUD rounds its clock down (default: up), as the freeze time's end tells
 }
 
 type clockSample struct {
@@ -120,6 +121,7 @@ type syncCand struct {
 	off         float64
 	read, round int
 	known       bool // matched on the read's round number too
+	tick        bool // from the moment the clock ticked: good to a frame
 }
 
 // roundTrust: below this many seconds the HUD may still show the last round's
@@ -128,7 +130,16 @@ const roundTrust = 25
 
 // candidates: offsets (audio time - data time) at which the data showed r's second.
 func (a *autoSync) candidates(r audio.ClockRead) []syncCand {
-	target := float64(r.Secs) + 0.5 // the HUD shows a whole second; aim at its middle
+	// The HUD shows whole seconds. Rounding up, it turns to Secs as the time left
+	// reaches Secs; rounding down, at Secs+1. A tick read is that exact moment;
+	// any other read is somewhere in the second, so aim at its middle.
+	target := float64(r.Secs)
+	if a.floor {
+		target++
+	}
+	if !r.Tick {
+		target -= 0.5
+	}
 	known := r.Round > 0 && r.Secs >= roundTrust
 	var out []syncCand
 	for i := 1; i < len(a.hist); i++ {
@@ -146,7 +157,7 @@ func (a *autoSync) candidates(r audio.ClockRead) []syncCand {
 		}
 		f := (p.left - target) / (p.left - q.left)
 		t := p.t.Add(time.Duration(f * float64(q.t.Sub(p.t))))
-		out = append(out, syncCand{off: r.At.Sub(t).Seconds(), round: p.round, known: known})
+		out = append(out, syncCand{off: r.At.Sub(t).Seconds(), round: p.round, known: known, tick: r.Tick})
 	}
 	return out
 }
@@ -154,7 +165,7 @@ func (a *autoSync) candidates(r audio.ClockRead) []syncCand {
 // vote finds the offset that reads agree on, and that no other offset matches as
 // well: reads that named their round settle it alone; otherwise reads from at least
 // two countdowns must agree.
-func (a *autoSync) vote() (float64, bool) {
+func (a *autoSync) voteOnce() (float64, bool) {
 	named := false // the stream's round number can be read: trust only reads that name it
 	for _, r := range a.reads {
 		named = named || r.Round > 0
@@ -202,10 +213,17 @@ func (a *autoSync) vote() (float64, bool) {
 	if !settled || !best.known && best.reads < syncReads {
 		return 0, false
 	}
-	offs := make([]float64, 0, best.hi-best.lo)
+	var offs, ticks []float64 // the ticks, good to a frame, decide if there are enough
 	for _, c := range all[best.lo:best.hi] {
 		offs = append(offs, c.off)
+		if c.tick {
+			ticks = append(ticks, c.off)
+		}
 	}
+	if len(ticks) >= syncKnownReads {
+		offs = ticks
+	}
+	sort.Float64s(offs)
 	return math.Round(offs[len(offs)/2]*10) / 10, true
 }
 
@@ -245,4 +263,64 @@ func (a *autoSync) lockTarget() *audio.ClockRead {
 		}
 	}
 	return nil
+}
+
+// vote settles the offset. Once the stream's freeze time has been seen ending
+// (the clock jumping up to the round's start), that moment, which no rounding
+// blurs, also decides whether the HUD rounds up or down.
+func (a *autoSync) vote() (float64, bool) {
+	jump, ok := a.jumpOffset()
+	if !ok {
+		return a.voteOnce()
+	}
+	up, okUp := a.withFloor(false)
+	down, okDown := a.withFloor(true)
+	switch {
+	case okUp && okDown:
+		a.floor = math.Abs(down-jump) < math.Abs(up-jump)
+	case okDown:
+		a.floor = true
+	case okUp:
+		a.floor = false
+	default:
+		return 0, false
+	}
+	if a.floor {
+		return down, true
+	}
+	return up, true
+}
+
+func (a *autoSync) withFloor(floor bool) (float64, bool) {
+	keep := a.floor
+	a.floor = floor
+	defer func() { a.floor = keep }()
+	return a.voteOnce()
+}
+
+// roundLen is a competitive round's clock at its start (1:55).
+const roundLen = 115
+
+// jumpOffset is the offset given by the freeze times' ends seen on the stream:
+// each against the moment the data's round of that number started.
+func (a *autoSync) jumpOffset() (float64, bool) {
+	var offs []float64
+	for _, r := range a.reads {
+		if !r.Jump || r.Round == 0 {
+			continue
+		}
+		for i := 1; i < len(a.hist); i++ {
+			p, q := a.hist[i-1], a.hist[i]
+			if p.live || !q.live || q.id != r.Round || q.left < roundLen-3 {
+				continue
+			}
+			start := q.t.Add(-time.Duration((roundLen - q.left) * float64(time.Second)))
+			offs = append(offs, r.At.Sub(start).Seconds())
+		}
+	}
+	if len(offs) == 0 {
+		return 0, false
+	}
+	sort.Float64s(offs)
+	return offs[len(offs)/2], true
 }

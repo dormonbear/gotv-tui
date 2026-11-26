@@ -8,6 +8,7 @@ import (
 	"math"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"sync"
@@ -20,28 +21,48 @@ type ClockRead struct {
 	At    time.Time
 	Secs  int // the clock as shown, e.g. 73 for 01:13
 	Round int // "Round N" under the clock, 0 if not read
+	// Tick: At is the moment the clock turned to Secs (to a frame), not just a
+	// moment it showed Secs. Jump: that tick was the freeze time ending (the
+	// clock jumped up to the round's start), a moment the HUD's rounding can't blur.
+	Tick, Jump bool
 }
 
 // The HUD strip read: the top-centre of the picture, where CS2 broadcasts put the
 // score and the round clock, scaled to a fixed size.
 const (
 	stripW, stripH = 1536, 302
-	stripFilter    = "crop=iw*0.4:ih*0.14:iw*0.3:0,format=gray,scale=1536:302,showinfo"
+	clockFPS       = 20
+	clockWarmup    = 8 * time.Second
+	stripFilter    = "fps=20,crop=iw*0.4:ih*0.14:iw*0.3:0,format=gray,scale=1536:302,showinfo"
 )
 
 var ptsRe = regexp.MustCompile(`pts_time:\s*(-?[0-9.]+)`)
 
-// WatchClock reads src's round clock from its key frames until ctx ends; each
-// successful read goes to read.
+// hwaccel decodes the video in hardware where ffmpeg has it (every frame is
+// decoded now, to catch the clock's ticks).
+var hwaccel = func() string {
+	if runtime.GOOS == "darwin" {
+		return "videotoolbox"
+	}
+	return ""
+}()
+
+// WatchClock reads src's round clock until ctx ends; each successful read goes to
+// read. Every frame is decoded (in hardware where there is one) at clockFPS, so
+// the moment the clock ticks is caught to a frame; the digits are read on ticks
+// and once a second besides.
 func WatchClock(ctx context.Context, src string, tl *Timeline, read func(ClockRead)) error {
 	url, headers, err := resolve(ctx, src, "best[height<=1080]/best")
 	if err != nil {
 		return err
 	}
-	// key frames only: decoding every frame of a 1080p stream would cost a core
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-nostats", "-loglevel", "info", "-reconnect", "1", "-reconnect_streamed", "1",
-		"-headers", headers, "-skip_frame", "nokey", "-copyts", "-i", url, "-an", "-vf", stripFilter, "-fps_mode", "passthrough",
+	args := []string{"-nostats", "-loglevel", "info", "-reconnect", "1", "-reconnect_streamed", "1", "-headers", headers}
+	if hwaccel != "" {
+		args = append(args, "-hwaccel", hwaccel)
+	}
+	args = append(args, "-copyts", "-i", url, "-an", "-vf", stripFilter, "-fps_mode", "passthrough",
 		"-f", "rawvideo", "-pix_fmt", "gray", "pipe:1")
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	out, err1 := cmd.StdoutPipe()
 	logs, err2 := cmd.StderrPipe()
 	if err1 != nil || err2 != nil {
@@ -68,8 +89,11 @@ func WatchClock(ctx context.Context, src string, tl *Timeline, read func(ClockRe
 		}
 	}()
 	var reader clockReader
+	var ticks tickDetector
+	began := time.Now()
+	last, lastPts := -1, 0.0 // the last value read, for spotting the freeze time's end
 	frame := make([]byte, stripW*stripH)
-	for {
+	for n := 0; ; n++ {
 		if _, err := io.ReadFull(out, frame); err != nil {
 			return ctx.Err()
 		}
@@ -78,9 +102,33 @@ func WatchClock(ctx context.Context, src string, tl *Timeline, read func(ClockRe
 			return ctx.Err()
 		}
 		at := tl.observe(p, time.Now())
+		settled := time.Since(began) > clockWarmup
 		img := &image.Gray{Pix: frame, Stride: stripW, Rect: image.Rect(0, 0, stripW, stripH)}
-		if secs, ok := reader.read(p, img); ok {
-			read(ClockRead{At: at, Secs: secs, Round: reader.readRound(img)})
+		r := ClockRead{At: at}
+		if reader.lay != nil {
+			t, tick := ticks.push(img, reader.lay.box(img), p)
+			if !tick && n%clockFPS != 0 {
+				continue // between ticks the digits can't have changed
+			}
+			if tick {
+				r.At, _ = tl.Local(t)
+				r.Tick = true
+			}
+		} else if n%(clockFPS/4) != 0 { // still finding the clock: 4 tries a second
+			continue
+		}
+		secs, ok := reader.read(p, img)
+		if !ok {
+			continue
+		}
+		r.Secs, r.Round = secs, reader.readRound(img)
+		r.Jump = r.Tick && secs >= 100 && last >= 0 && last <= 20 && p-lastPts < 5
+		// as in Fy1Sync, a tick counts only if the clock went down by exactly one
+		// (or jumped up at the freeze time's end); other pixel changes are not ticks
+		r.Tick = r.Tick && (r.Jump || secs == last-1 && p-lastPts < 2.5)
+		last, lastPts = secs, p
+		if settled { // the first seconds arrive in a burst: their timing is no good
+			read(r)
 		}
 	}
 }

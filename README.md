@@ -159,9 +159,8 @@ Streams and CSTV run on different delays. **Auto sync** (on by default, `a` togg
 lines them up by itself: it reads the round clock off the stream's picture (key frames
 only) and finds when the match data showed the same second. A clock value comes back
 every round, so it settles once reads from two rounds agree, and keeps re-checking as
-the match goes on. Nothing extra to install: the digits are recognised in-process
-(glyph priors and method from [Fy1Sync](https://github.com/Fy1ng/Fy1Sync)), then
-learned from the stream's own font within seconds. It needs a stream showing the
+the match goes on. Nothing extra to install: the digits are recognised in-process,
+then learned from the stream's own font within seconds. It needs a stream showing the
 broadcast HUD and is accurate to about a second. The offset found is remembered per relay and stream
 (`~/.config/gotv-tui/offsets.json`), so reopening the same pair starts lined up.
 When the offset changes, the sound received over the last ten minutes is kept, so
@@ -261,6 +260,5 @@ It only reads broadcasts that organizers publish for public viewing.
 
 ## License
 
-[GPL-3.0](LICENSE). Releases up to v0.35.0 were MIT. The round-clock reader is ported
-from [Fy1Sync](https://github.com/Fy1ng/Fy1Sync) (GPL-3.0), including its glyph priors.
-Radar images are Valve's and are downloaded at run time, not shipped.
+[GPL-3.0](LICENSE). Releases up to v0.35.0 were MIT. Radar images are Valve's and
+are downloaded at run time, not shipped.

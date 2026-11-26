@@ -626,7 +626,8 @@ func (m *matchModel) directorSwitch(width int) string {
 		sw = switchFocus.Render(" ◎ FOLLOWING " + m.focusName() + " ")
 		m.switchW = 0 // following, not the director: the bar isn't a switch now
 		m.badgeX = m.switchX + lipgloss.Width(sw) + 2
-		return fitTail(pre+sw+note, m.streamClock(), width)
+		clock, sync := m.streamClock()
+		return fitTail(pre+sw+note+clock, sync, width)
 	}
 	if m.directing {
 		sw = switchOn.Render(" ● DIRECTOR ON ")
@@ -635,7 +636,8 @@ func (m *matchModel) directorSwitch(width int) string {
 	}
 	m.switchW = lipgloss.Width(sw)
 	m.badgeX = m.switchX + m.switchW + 2
-	return fitTail(pre+sw+note, m.streamClock(), width)
+	clock, sync := m.streamClock()
+	return fitTail(pre+sw+note+clock, sync, width)
 }
 
 var waitQuips = []string{
