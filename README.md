@@ -140,6 +140,7 @@ delay, not gotv-tui.
 | `a` | audio auto sync on/off (reads the stream's round clock) |
 | `t` | audio sync: press as a kill is called; lines up on the nearest kill |
 | `s` | scoreboard: live state ↔ match stats (+/-, ADR, HS%, KAST% (trades counted from when you connect), KPR, utility damage, enemies flashed, 3k/4k/5k) |
+| `1`–`5`, `6`–`0` | follow CT player 1–5 / T player 1–5 (their badge number); the same key again stops |
 | click a player | follow them (on the map or the scoreboard); click again or elsewhere to stop |
 | `?` | all keys; any key closes it |
 | `b`, `esc` | back to the source list |
