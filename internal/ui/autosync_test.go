@@ -29,9 +29,9 @@ func TestAutoSyncFindsOffset(t *testing.T) {
 		ts := float64(i) * 0.25
 		switch {
 		case ts <= 75:
-			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: 5, id: 5, left: 115 - ts})
+			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: 5, id: 5, left: 115 - ts, live: true})
 		case ts >= 90:
-			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: 6, id: 6, left: 115 - (ts - 90)})
+			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: 6, id: 6, left: 115 - (ts - 90), live: true})
 		}
 	}
 	read := func(dataT float64, round int) { // what the stream shows 42 s after the data
@@ -116,7 +116,7 @@ func TestAutoSyncWithRoundNumbers(t *testing.T) {
 	for r := 0; r < 3; r++ { // rounds 7, 8, 9 each counting 115 -> 40 over 75 s, 90 s apart
 		for i := 0; i <= 300; i++ {
 			ts := float64(r*90) + float64(i)*0.25
-			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: r, id: 7 + r, left: 115 - float64(i)*0.25})
+			m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: r, id: 7 + r, left: 115 - float64(i)*0.25, live: true})
 		}
 	}
 	// round 8 seen on the stream 30 s later than the data showed it
@@ -138,7 +138,7 @@ func TestLockTargetWhileStreamAhead(t *testing.T) {
 	a := &autoSync{}
 	t0 := time.Unix(1000, 0)
 	for i := 0; i < 40; i++ { // data: round 13, 76 s left and counting
-		a.hist = append(a.hist, clockSample{t: t0.Add(time.Duration(i) * 250 * time.Millisecond), round: 0, id: 13, left: 86 - float64(i)*0.25})
+		a.hist = append(a.hist, clockSample{t: t0.Add(time.Duration(i) * 250 * time.Millisecond), round: 0, id: 13, left: 86 - float64(i)*0.25, live: true})
 	}
 	for _, s := range []int{55, 54, 52, 51} { // stream: round 14
 		a.reads = append(a.reads, audio.ClockRead{At: t0, Secs: s, Round: 14})
@@ -149,5 +149,25 @@ func TestLockTargetWhileStreamAhead(t *testing.T) {
 	a.reads = []audio.ClockRead{{At: t0, Secs: 80, Round: 13}} // data has passed this one
 	if a.lockTarget() != nil {
 		t.Fatal("once the data has reached the reads there is nothing to wait for")
+	}
+}
+
+// The bug behind a wrong lock: the stream's round clock (R16 0:39, 0:36, 0:35)
+// matched the data's freeze/timeout countdown of the same round. Long stream
+// clocks must only match the round's own clock.
+func TestNoLockOnAFreezeCountdown(t *testing.T) {
+	m := &matchModel{}
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.sound.auto = autoSync{on: true, cancel: cancel}
+	t0 := time.Unix(1000, 0)
+	for i := 0; i <= 240; i++ { // data: round 16, a 60 s timeout before the round starts
+		m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: t0.Add(time.Duration(i) * 250 * time.Millisecond), id: 16, left: 60 - float64(i)*0.25})
+	}
+	for _, s := range []int{39, 36, 35, 32} {
+		m.onClockRead(audio.ClockRead{At: t0.Add(time.Duration(70-s) * time.Second), Secs: s, Round: 16})
+	}
+	if m.sound.auto.locked || m.sound.offset != 0 {
+		t.Fatalf("locked on a freeze countdown: offset %v", m.sound.offset)
 	}
 }

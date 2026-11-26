@@ -29,6 +29,7 @@ type clockSample struct {
 	round int       // which unbroken countdown: a round's live time, or its freeze time
 	id    int       // the round by the score (rounds played + 1), as the HUD numbers it
 	left  float64
+	live  bool // the round's own clock, not the freeze time or a pause before it
 }
 
 type clockReadMsg audio.ClockRead
@@ -85,7 +86,7 @@ func (m *matchModel) recordClock(s *gotv.State, now time.Time) {
 			a.run++
 		}
 	}
-	a.hist = append(a.hist, clockSample{t, a.run, s.CT.Score + s.T.Score + 1, s.SecondsLeft})
+	a.hist = append(a.hist, clockSample{t, a.run, s.CT.Score + s.T.Score + 1, s.SecondsLeft, !s.Freeze})
 	for len(a.hist) > 0 && t.Sub(a.hist[0].t) > syncKeep {
 		a.hist = a.hist[1:]
 	}
@@ -132,6 +133,11 @@ func (a *autoSync) candidates(r audio.ClockRead) []syncCand {
 			continue
 		}
 		if known && (p.id != r.Round || q.id != r.Round) {
+			continue
+		}
+		// a long clock on the stream is the round's own: never match it to a freeze
+		// time or a timeout counting through the same seconds
+		if r.Secs >= roundTrust && !(p.live && q.live) {
 			continue
 		}
 		f := (p.left - target) / (p.left - q.left)
