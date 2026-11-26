@@ -60,6 +60,18 @@ type Player struct {
 // with the round-clock reader), instead of by when each piece arrived.
 func (p *Player) SetTimeline(tl *Timeline) { p.tl.Store(tl) }
 
+// timelineWait is how long the sound waits for a timeline it was given to start.
+const timelineWait = 15 * time.Second
+
+func (p *Player) timelinePending() bool {
+	tl := p.tl.Load()
+	if tl == nil {
+		return false
+	}
+	_, ok := tl.Local(0)
+	return !ok
+}
+
 // when is the local time a piece of sound belongs to.
 func (p *Player) when(c chunk) time.Time {
 	if c.hasPTS {
@@ -197,6 +209,17 @@ func (p *Player) play(from time.Time) {
 		}
 		defer cmd.Wait()
 		defer in.Close()
+		// with a timeline coming (auto sync), wait for it rather than play by arrival
+		// and then pause seconds to fall in line once it is there
+		began := time.Now()
+		for p.timelinePending() && time.Since(began) < timelineWait {
+			select {
+			case <-time.After(100 * time.Millisecond):
+			case <-ctx.Done():
+				return
+			}
+		}
+		from = from.Add(time.Since(began)) // start from now, not with what piled up while waiting
 		for seq := t.seek(from, p.when); ; seq++ {
 			c, ok := t.wait(ctx, seq)
 			if !ok {
