@@ -366,11 +366,18 @@ func roundStatus(st *gotv.State) string {
 }
 
 // header is the score line over the scoreboard; the clock lives above the map.
-func header(st *gotv.State) string {
-	return fmt.Sprintf(" %s%s%s %d%s : %s%s%d %s%s  %s",
-		term.Fg(term.CT), boldOn, st.CT.Name, st.CT.Score, reset,
-		term.Fg(term.T), boldOn, st.T.Score, st.T.Name, reset,
-		dim(feeds.MapName(st.Map)))
+// Team names fall back to initials when the line doesn't fit w cells.
+func header(st *gotv.State, w int) string {
+	line := func(ct, t string) string {
+		return fmt.Sprintf(" %s%s%s %d%s : %s%s%d %s%s  %s",
+			term.Fg(term.CT), boldOn, ct, st.CT.Score, reset,
+			term.Fg(term.T), boldOn, st.T.Score, t, reset,
+			dim(feeds.MapName(st.Map)))
+	}
+	if s := line(st.CT.Name, st.T.Name); ansi.StringWidth(s) <= w {
+		return s
+	}
+	return line(abbrev(st.CT.Name, 12), abbrev(st.T.Name, 12))
 }
 
 var frame = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("8"))
@@ -487,7 +494,7 @@ func (m *matchModel) panel(nums map[string]int, compact bool) []string {
 	if m.st == nil {
 		return append([]string{m.withBadge("")}, waiting(time.Now(), m.status)...)
 	}
-	lines := []string{m.withBadge(header(m.st))}
+	lines := []string{m.withBadge(header(m.st, m.panelW-ansi.StringWidth(linkBadge(m.link, m.lastData, time.Now()))))}
 	if h := historyLine(m.st.History, m.rounds, m.st.Round, m.panelW); h != "" {
 		lines = append(lines, h)
 	}
