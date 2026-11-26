@@ -5,10 +5,12 @@ import (
 	"context"
 	"image"
 	"io"
+	"math"
 	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -31,14 +33,14 @@ var ptsRe = regexp.MustCompile(`pts_time:\s*(-?[0-9.]+)`)
 
 // WatchClock reads src's round clock from its key frames until ctx ends; each
 // successful read goes to read.
-func WatchClock(ctx context.Context, src string, read func(ClockRead)) error {
+func WatchClock(ctx context.Context, src string, tl *Timeline, read func(ClockRead)) error {
 	url, headers, err := resolve(ctx, src, "best[height<=1080]/best")
 	if err != nil {
 		return err
 	}
 	// key frames only: decoding every frame of a 1080p stream would cost a core
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-nostats", "-loglevel", "info", "-reconnect", "1", "-reconnect_streamed", "1",
-		"-headers", headers, "-skip_frame", "nokey", "-i", url, "-an", "-vf", stripFilter, "-fps_mode", "passthrough",
+		"-headers", headers, "-skip_frame", "nokey", "-copyts", "-i", url, "-an", "-vf", stripFilter, "-fps_mode", "passthrough",
 		"-f", "rawvideo", "-pix_fmt", "gray", "pipe:1")
 	out, err1 := cmd.StdoutPipe()
 	logs, err2 := cmd.StderrPipe()
@@ -65,7 +67,6 @@ func WatchClock(ctx context.Context, src string, read func(ClockRead)) error {
 			}
 		}
 	}()
-	var clock streamClock
 	var reader clockReader
 	frame := make([]byte, stripW*stripH)
 	for {
@@ -76,7 +77,7 @@ func WatchClock(ctx context.Context, src string, read func(ClockRead)) error {
 		if !ok {
 			return ctx.Err()
 		}
-		at := clock.local(p, time.Now())
+		at := tl.observe(p, time.Now())
 		img := &image.Gray{Pix: frame, Stride: stripW, Rect: image.Rect(0, 0, stripW, stripH)}
 		if secs, ok := reader.read(p, img); ok {
 			read(ClockRead{At: at, Secs: secs, Round: reader.readRound(img)})
@@ -84,21 +85,46 @@ func WatchClock(ctx context.Context, src string, read func(ClockRead)) error {
 	}
 }
 
-// streamClock maps stream time to local time: arrival minus pts, steadied by
-// taking the median of recent frames (network bursts only ever make frames late).
-type streamClock struct{ offs []float64 }
+// Timeline maps the stream's own time (pts) to local time: arrival minus pts,
+// steadied by the median of recent key frames (network bursts only make frames
+// late). The clock reader and the audio share it, so the sound is timed on the
+// same footing as the clock reads, whatever each pipeline's own lag.
+type Timeline struct {
+	mu   sync.Mutex
+	offs []float64
+}
 
-func (c *streamClock) local(pts float64, arrived time.Time) time.Time {
+// observe records a frame of stream time pts arriving at arrived and returns
+// its local time.
+func (c *Timeline) observe(pts float64, arrived time.Time) time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	at := float64(arrived.UnixNano())/1e9 - pts
-	if n := len(c.offs); n > 0 && abs(int(at-c.offs[n-1])) > 30 { // the stream restarted its clock
+	if n := len(c.offs); n > 0 && math.Abs(at-c.offs[n-1]) > 30 { // the stream restarted its clock
 		c.offs = nil
 	}
 	c.offs = append(c.offs, at)
 	if len(c.offs) > 31 {
 		c.offs = c.offs[1:]
 	}
+	return c.at(pts)
+}
+
+// Local is when stream time pts plays locally; false until a frame was seen.
+func (c *Timeline) Local(pts float64) (time.Time, bool) {
+	if c == nil {
+		return time.Time{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.offs) == 0 {
+		return time.Time{}, false
+	}
+	return c.at(pts), true
+}
+
+func (c *Timeline) at(pts float64) time.Time {
 	s := append([]float64(nil), c.offs...)
 	sort.Float64s(s)
-	base := s[len(s)/2]
-	return time.Unix(0, int64((base+pts)*1e9))
+	return time.Unix(0, int64((s[len(s)/2]+pts)*1e9))
 }

@@ -59,8 +59,12 @@ func (m *matchModel) startAutoSync(src string) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	a.cancel = cancel
 	send := m.send
+	tl := &audio.Timeline{} // the clock reads and the sound share one notion of stream time
+	if m.sound.player != nil {
+		m.sound.player.SetTimeline(tl)
+	}
 	go func() {
-		err := audio.WatchClock(ctx, src, func(r audio.ClockRead) { send(clockReadMsg(r), false) })
+		err := audio.WatchClock(ctx, src, tl, func(r audio.ClockRead) { send(clockReadMsg(r), false) })
 		if err != nil && ctx.Err() == nil {
 			send(soundStatusMsg("auto sync: "+err.Error()), false)
 		}

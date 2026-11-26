@@ -53,6 +53,21 @@ type Player struct {
 	pstop  context.CancelFunc // the playing side (ffplay), restarted when the delay changes
 	pdone  chan struct{}
 	muted  bool
+	tl     atomic.Pointer[Timeline] // the stream's pts -> local time, shared with the clock reader
+}
+
+// SetTimeline times the sound by the stream's own clock, as mapped by tl (shared
+// with the round-clock reader), instead of by when each piece arrived.
+func (p *Player) SetTimeline(tl *Timeline) { p.tl.Store(tl) }
+
+// when is the local time a piece of sound belongs to.
+func (p *Player) when(c chunk) time.Time {
+	if c.hasPTS {
+		if at, ok := p.tl.Load().Local(c.pts); ok {
+			return at
+		}
+	}
+	return c.at
 }
 
 // SetMuted stops or resumes the sound. The stream keeps being received, so it
@@ -105,7 +120,10 @@ func (p *Player) spawn() {
 		}
 		// ffmpeg keeps just the sound, as MPEG-TS: easy to pass through a pipe
 		fetch := exec.CommandContext(ctx, "ffmpeg", "-loglevel", "error", "-reconnect", "1", "-reconnect_streamed", "1",
-			"-reconnect_delay_max", "5", "-headers", headers, "-i", url, "-vn", "-c:a", "copy", "-f", "mpegts", "pipe:1")
+			"-reconnect_delay_max", "5", "-headers", headers, "-i", url, "-vn", "-c:a", "copy",
+			"-copyts", // keep the stream's own timestamps: the sound is timed by them
+			// no muxer buffering: each piece is timed by when it arrives, so it must leave at once
+			"-muxdelay", "0", "-muxpreload", "0", "-flush_packets", "1", "-f", "mpegts", "pipe:1")
 		var fetchErr strings.Builder
 		fetch.Stderr = &limited{w: &fetchErr, n: 2000}
 		out, err := fetch.StdoutPipe()
@@ -121,7 +139,8 @@ func (p *Player) spawn() {
 			p.play(time.Now())
 		}
 		p.mu.Unlock()
-		first := true
+		first, ts := true, &tsPTS{}
+		last, hasLast := 0.0, false
 		for {
 			buf := make([]byte, 32<<10)
 			n, err := out.Read(buf)
@@ -130,7 +149,12 @@ func (p *Player) spawn() {
 					p.status("audio: playing")
 					first = false
 				}
-				p.tape.add(time.Now(), buf[:n])
+				c := chunk{at: time.Now(), b: buf[:n]}
+				if pts, ok := ts.feed(buf[:n]); ok {
+					last, hasLast = pts, true
+				}
+				c.pts, c.hasPTS = last, hasLast
+				p.tape.add(c)
 			}
 			if err != nil {
 				break
@@ -159,7 +183,8 @@ func (p *Player) play(from time.Time) {
 	t := p.tape
 	go func() {
 		defer close(done)
-		cmd := exec.CommandContext(ctx, "ffplay", "-nodisp", "-nostats", "-loglevel", "error", "-i", "pipe:0")
+		cmd := exec.CommandContext(ctx, "ffplay", "-nodisp", "-nostats", "-loglevel", "error",
+			"-fflags", "nobuffer", "-flags", "low_delay", "-probesize", "32768", "-analyzeduration", "0", "-i", "pipe:0")
 		var playErr strings.Builder
 		cmd.Stderr = &limited{w: &playErr, n: 2000} // e.g. no audio device: shown if it stops
 		in, err := cmd.StdinPipe()
@@ -172,12 +197,12 @@ func (p *Player) play(from time.Time) {
 		}
 		defer cmd.Wait()
 		defer in.Close()
-		for seq := t.seek(from); ; seq++ {
+		for seq := t.seek(from, p.when); ; seq++ {
 			c, ok := t.wait(ctx, seq)
 			if !ok {
 				return
 			}
-			if wait := time.Until(c.at.Add(p.Delay())); wait > 0 {
+			if wait := time.Until(p.when(c).Add(p.Delay())); wait > 0 {
 				select {
 				case <-time.After(wait):
 				case <-ctx.Done():
