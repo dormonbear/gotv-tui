@@ -97,12 +97,15 @@ func TestDragKeepsTheGrabbedPointUnderThePointer(t *testing.T) {
 	}
 }
 
-// dragOn grabs the last level shown (the lower map on two-level maps): both levels
-// share one camera, so the other level must move with it.
+// dragOn grabs the last level shown (the lower map on two-level maps): each level
+// has its own view, so the other level must stay where it was.
 func dragOn(t *testing.T, lower bool) {
 	m := testMatch(lower)
 	m.zoom, m.zoomTo = 3, 3
+	cx, cy := m.box.Center()
+	m.parked[1] = parked{cx, cy, 3, true}
 	m.view()
+	other := m.levels[0].view
 	lv := m.levels[len(m.levels)-1]
 	x, y := lv.sx+20, lv.sy+8
 	ax, ay, _ := m.radarAt(float64(x)+0.5, float64(y)+0.5)
@@ -114,8 +117,8 @@ func dragOn(t *testing.T, lower bool) {
 	if bx, by, _ := m.radarAt(float64(x+7)+0.5, float64(y+3)+0.5); math.Abs(bx-ax) > 1e-6 || math.Abs(by-ay) > 1e-6 {
 		t.Fatalf("lower=%v: grabbed (%.1f,%.1f), now under pointer (%.1f,%.1f)", lower, ax, ay, bx, by)
 	}
-	if m.levels[0].view != m.levels[len(m.levels)-1].view {
-		t.Fatal("levels no longer share the camera")
+	if lower && m.levels[0].view != other {
+		t.Fatal("dragging the lower level moved the upper one")
 	}
 	m.mouse(tea.MouseMsg{X: x + 30, Y: y, Button: tea.MouseButtonNone, Action: tea.MouseActionMotion})
 	if m.drag.on {
@@ -400,5 +403,39 @@ func TestNumberKeysFollowPlayers(t *testing.T) {
 		if m.focus != c.want {
 			t.Fatalf("key %s: focus %q, want %q", c.key, m.focus, c.want)
 		}
+	}
+}
+
+// On a two-level map the wheel zooms only the level under the pointer, and the
+// director drives the level its shot is on, sending the other back to the whole map.
+func TestLevelsZoomOnTheirOwn(t *testing.T) {
+	m := testMatch(true)
+	m.directing = false
+	m.view()
+	lo := m.levels[1]
+	for i := 0; i < 3; i++ { // wheel up over the lower level
+		m.mouse(tea.MouseMsg{X: lo.sx + 10, Y: lo.sy + 5, Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
+	}
+	for m.moving {
+		m.step()
+	}
+	if m.levelZoom(1) <= 1.3 || m.levelZoom(0) != 1 {
+		t.Fatalf("lower %.2f upper %.2f: only the lower level should zoom", m.levelZoom(1), m.levelZoom(0))
+	}
+	m.view()
+	up := m.levels[0]
+	m.mouse(tea.MouseMsg{X: up.sx + 10, Y: up.sy + 5, Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
+	for m.moving {
+		m.step()
+	}
+	if m.levelZoom(0) <= 1 || m.levelZoom(1) <= 1.3 {
+		t.Fatalf("upper %.2f lower %.2f: the lower level should keep its zoom", m.levelZoom(0), m.levelZoom(1))
+	}
+
+	m.directing = true // a shot down below
+	m.shot = &director.Shot{X: 500, Y: -500, Z: -800, Radius: 100}
+	m.follow()
+	if m.camLevel != 1 || m.levelZoom(0) != 1 {
+		t.Fatalf("director: driving level %d, upper zoom %.2f", m.camLevel, m.levelZoom(0))
 	}
 }

@@ -96,6 +96,8 @@ type matchModel struct {
 	zoomTo       float64   // zoom animates towards this
 	anchor       anchor    // radar point held still while zooming
 	moving       bool      // zoom animation running
+	camLevel     int       // the level the camera drives (0 upper, 1 lower); the other stays parked
+	parked       [2]parked // each level's view while the camera drives the other
 	drag         drag
 	// director: picks the shot; the camera follows it while directing
 	dir       *director.Director
@@ -403,10 +405,16 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 	// zoom 1 shows the map grown to the area's shape: the view fills the frame
 	cols, rows := levelW-2, levelH-2-titleRows
 	m.frame = m.box.Fill(float64(cols) / (float64(rows) * m.aspect))
-	view := m.camera()
-	if len(m.levels) != len(want) || m.levels[0].w != levelW || m.levels[0].h != levelH || m.levels[0].r.Aspect != m.aspect || m.levels[0].view != view {
+	views := make([]radar.Box, len(want))
+	rebuild := len(m.levels) != len(want) || m.levels[0].w != levelW || m.levels[0].h != levelH || m.levels[0].r.Aspect != m.aspect
+	for i := range want {
+		views[i] = m.levelView(i)
+		rebuild = rebuild || m.levels[i].view != views[i]
+	}
+	if rebuild {
 		m.levels = nil
-		for _, lower := range want {
+		for i, lower := range want {
+			view := views[i]
 			img := a.Upper
 			if lower {
 				img = a.Lower
@@ -418,7 +426,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 				lv.base = radar.Size(lv.r)
 			} else {
 				lv.r = radar.Rasterize(img, a.Overview, view, cw, ch, m.aspect)
-				lv.base = radar.BuildBase(lv.r, m.zoom)
+				lv.base = radar.BuildBase(lv.r, m.levelZoom(i))
 			}
 			m.levels = append(m.levels, lv)
 		}
@@ -429,7 +437,7 @@ func (m *matchModel) mapView(width, height int, nums map[string]int) string {
 			Kills: m.kills, Nums: nums, Now: time.Now(), Lower: lv.lower,
 			LowerBelow: a.Overview.LowerBelow, Sites: radar.SitesOn(a.Map, lv.lower, a.Overview.Sites),
 			ImageUnder: m.images(),
-			Names:      m.zoom >= namesFrom,
+			Names:      m.levelZoom(i) >= namesFrom,
 			Focus:      m.focus,
 			Boom:       m.fx.boom(time.Now()),
 			Blasts:     m.blasts,

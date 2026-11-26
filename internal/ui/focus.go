@@ -52,6 +52,7 @@ func (m *matchModel) focusPos() (float64, float64, bool) {
 	ov := m.assets.Overview
 	for _, p := range m.st.Players {
 		if strings.ToLower(p.Name) == m.focus && p.Pos != nil {
+			m.driveLevel(m.levelOf(p.Pos.Z), true) // follow them onto their level
 			return (p.Pos.X - ov.PosX) / ov.Scale, (ov.PosY - p.Pos.Y) / ov.Scale, true
 		}
 	}
