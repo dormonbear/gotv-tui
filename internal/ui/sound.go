@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/dormonbear/gotv-tui/internal/audio"
 	"github.com/dormonbear/gotv-tui/internal/gotv"
@@ -20,6 +21,7 @@ import (
 type sound struct {
 	player    *audio.Player
 	src       string
+	url       string       // the stream page src resolves to
 	offset    float64      // seconds
 	dataDelay atomic.Int64 // ms, read by the playback goroutine
 	input     *textinput.Model
@@ -29,6 +31,7 @@ type sound struct {
 	history   []string          // the chosen platform's rooms that played, for ↑/↓
 	histAt    int               // -1: not browsing the history
 	pending   [2]string         // platform and room just started; saved once it plays
+	auto      autoSync
 }
 
 // audioChoice is what a match was playing, to restore when the source is reopened.
@@ -64,6 +67,7 @@ func (s *sound) apply() {
 func (s *sound) delay() float64 { return float64(s.dataDelay.Load()) / 1000 }
 
 func (s *sound) stop() {
+	s.auto.stop()
 	if s.player != nil {
 		s.player.Stop()
 		s.player = nil
@@ -78,16 +82,31 @@ func (m *matchModel) soundKey(k string) (tea.Cmd, bool) {
 	case "v":
 		s.picking = true
 		return nil, true
+	case "a":
+		if s.player == nil {
+			return nil, true
+		}
+		s.auto.on = !s.auto.on
+		if s.auto.on {
+			m.status = "auto sync on: reading the stream's round clock..."
+			m.startAutoSync(s.url)
+		} else {
+			s.auto.stop()
+			m.status = "auto sync off"
+		}
+		return nil, true
 	case "[", "]", "{", "}":
 		if s.player == nil {
 			return nil, true
 		}
+		s.manual()
 		step := map[string]float64{"[": -1, "]": 1, "{": -0.1, "}": 0.1}[k]
 		s.offset = math.Round((s.offset+step)*10) / 10
 		s.apply()
 		return nil, true
 	case "t":
 		if s.player != nil {
+			s.manual()
 			m.tapSync(time.Now())
 		}
 		return nil, true
@@ -177,7 +196,11 @@ func (m *matchModel) soundNote() string {
 	if s.player == nil {
 		return ""
 	}
-	return fmt.Sprintf(" ♪ %s · offset %+.1fs ([ ] { } t) ·", s.src, s.offset)
+	auto := ""
+	if s.auto.cancel != nil {
+		auto = " auto"
+	}
+	return fmt.Sprintf(" offset%s: a [ ] t ·", auto)
 }
 
 // pickPlatform: ←/→ (or the number) choose, enter goes on to the room, esc cancels.
@@ -257,8 +280,9 @@ func (m *matchModel) startAudio(typed string, pick [2]string) {
 		m.status = err.Error()
 		return
 	}
-	s.player, s.src, s.pending = player, typed, pick
+	s.player, s.src, s.url, s.pending = player, typed, src, pick
 	s.apply()
+	m.startAutoSync(src)
 }
 
 // audioChoice is what to restore if this source is opened again.
@@ -273,4 +297,30 @@ func (m *matchModel) audioChoice() *audioChoice {
 func (m *matchModel) restoreAudio(c *audioChoice) {
 	m.sound.offset = c.offset
 	m.startAudio(c.typed, [2]string{})
+}
+
+// manual: a hand adjustment turns auto sync off, so it isn't undone.
+func (s *sound) manual() {
+	s.auto.stop()
+	s.auto.on = false
+}
+
+var soundOn = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("13"))
+
+// soundBadge is the "now playing" badge next to the director switch; the note
+// alternates so it reads as playing.
+func (m *matchModel) soundBadge() string {
+	s := &m.sound
+	if s.player == nil {
+		return ""
+	}
+	note := "♪"
+	if time.Now().UnixMilli()/500%2 == 1 {
+		note = "♫"
+	}
+	label := fmt.Sprintf(" %s %s  %+.1fs ", note, strings.ToUpper(s.src), s.offset)
+	if s.auto.cancel != nil {
+		label += "AUTO "
+	}
+	return soundOn.Render(label)
 }

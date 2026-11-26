@@ -137,6 +137,7 @@ delay, not gotv-tui.
 | `d`, click the switch | auto director on/off (on by default) |
 | `v` | audio: pick a platform (Huya, Twitch, Bilibili, a URL, or Off), then type the room or channel; e.g. Huya `123321`, Twitch `eslcs`; `↑`/`↓` bring back rooms that played before. Leaving a source and coming back resumes its audio (not after a restart). Twitch needs `HTTPS_PROXY` where it's blocked |
 | `[` `]` / `{` `}` | audio sync: shift by 1 s / 0.1 s |
+| `a` | audio auto sync on/off (reads the stream's round clock) |
 | `t` | audio sync: press as a kill is called; lines up on the nearest kill |
 | `s` | scoreboard: live state ↔ match stats (+/-, ADR, HS%, KAST% (trades counted from when you connect), KPR, utility damage, enemies flashed, 3k/4k/5k) |
 | click a player | follow them (on the map or the scoreboard); click again or elsewhere to stop |
@@ -153,7 +154,12 @@ on Twitch or YouTube, a co-streamer on Huya or Bilibili, or any direct media URL
 `.m3u8`, e.g. copied from the browser's network panel while the stream plays). It needs [yt-dlp](https://github.com/yt-dlp/yt-dlp) and
 [FFmpeg](https://ffmpeg.org) on your PATH (`brew install yt-dlp ffmpeg`).
 
-Streams and CSTV run on different delays, so line them up: press `t` the moment the
+Streams and CSTV run on different delays. **Auto sync** (on by default, `a` toggles it)
+lines them up by itself: it reads the round clock and "Round N" off the stream's
+picture (key frames only, via [Tesseract](https://github.com/tesseract-ocr/tesseract),
+`brew install tesseract`) and finds when the match data showed the same moment,
+re-checking as the match goes on. It needs a stream showing the broadcast HUD; it is
+accurate to about a second. Tesseract is optional: without it, or to fine-tune, press `t` the moment the
 commentary calls a kill, and gotv-tui shifts by the gap to the nearest kill (one it
 has shown, or one about to show); repeat to refine, or nudge with `[` `]` (1 s) and
 `{` `}` (0.1 s). If the audio is later than the match data the radar waits for it;
