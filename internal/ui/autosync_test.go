@@ -21,7 +21,7 @@ func TestAutoSyncFindsOffset(t *testing.T) {
 	m := &matchModel{}
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m.sound.auto = autoSync{on: true, cancel: cancel}
+	m.sound.auto = autoSync{on: true, cancel: cancel, floor: true} // reads below are built for a HUD rounding down
 	t0 := time.Unix(1000, 0)
 	at := func(s float64) time.Time { return t0.Add(time.Duration(s * float64(time.Second))) }
 	// round 5: 115 -> 40 s left over data time 0..75; round 6: 115 -> 0 over 90..205
@@ -110,7 +110,7 @@ func TestAutoSyncWithRoundNumbers(t *testing.T) {
 	m := &matchModel{}
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m.sound.auto = autoSync{on: true, cancel: cancel}
+	m.sound.auto = autoSync{on: true, cancel: cancel, floor: true}
 	t0 := time.Unix(1000, 0)
 	at := func(s float64) time.Time { return t0.Add(time.Duration(s * float64(time.Second))) }
 	for r := 0; r < 3; r++ { // rounds 7, 8, 9 each counting 115 -> 40 over 75 s, 90 s apart
@@ -196,5 +196,53 @@ func TestShortClocksDontVoteWhenRoundsAreRead(t *testing.T) {
 	}
 	if m.sound.auto.locked {
 		t.Fatalf("locked on short clocks: offset %v", m.sound.offset)
+	}
+}
+
+// Ticks are exact: a HUD rounding up turns to N as N seconds are left, so the
+// offset comes out to the tenth. A freeze time's end on the stream (a jump up to
+// 1:55) then tells the rounding: here the HUD rounds down, so the offset moves.
+func TestTicksAndTheFreezeEnd(t *testing.T) {
+	m := &matchModel{}
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.sound.auto = autoSync{on: true, cancel: cancel}
+	t0 := time.Unix(1000, 0)
+	at := func(s float64) time.Time { return t0.Add(time.Duration(s * float64(time.Second))) }
+	// data: round 9's freeze (20 s) then its live clock from 115, starting at t=20
+	for i := 0; i <= 80; i++ {
+		ts := float64(i) * 0.25
+		m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: 0, id: 9, left: 20 - ts})
+	}
+	for i := 1; i <= 400; i++ {
+		ts := 20 + float64(i)*0.25
+		m.sound.auto.hist = append(m.sound.auto.hist, clockSample{t: at(ts), round: 1, id: 9, left: 115 - (ts - 20), live: true})
+	}
+	const off = -42.3
+	tick := func(secs int, hudFloor bool) { // the stream turns to secs (with the given rounding)
+		left := float64(secs)
+		if hudFloor {
+			left++
+		}
+		m.onClockRead(audio.ClockRead{At: at(20 + (115 - left) + off), Secs: secs, Round: 9, Tick: true})
+	}
+	for _, s := range []int{100, 99, 98, 97} { // a HUD that rounds up, as assumed
+		tick(s, false)
+	}
+	if math.Abs(m.sound.offset-off) > 0.05 {
+		t.Fatalf("ticks: offset %v, want %v", m.sound.offset, off)
+	}
+
+	m.sound.auto.reads = nil // another stream, whose HUD rounds down
+	m.sound.auto.locked = false
+	for _, s := range []int{100, 99, 98, 97} {
+		tick(s, true)
+	}
+	if math.Abs(m.sound.offset-(off-1)) > 0.05 { // read as rounding up: a second out
+		t.Fatalf("before the freeze end: offset %v", m.sound.offset)
+	}
+	m.onClockRead(audio.ClockRead{At: at(20 + off), Secs: 114, Round: 9, Tick: true, Jump: true}) // the freeze ends
+	if !m.sound.auto.floor || math.Abs(m.sound.offset-off) > 0.05 {
+		t.Fatalf("after the freeze end: floor %v offset %v, want %v", m.sound.auto.floor, m.sound.offset, off)
 	}
 }

@@ -167,9 +167,24 @@ func title(side gotv.Side, t gotv.Team, w int) string {
 	room := w - 1 - len(tail) - 4 // keep one space before "HP"
 	name := t.Name
 	if ansi.StringWidth(name) > room {
-		name = strings.TrimRight(ansi.Truncate(name, room-1, ""), " ") + "…"
+		name = abbrev(name, room)
 	}
 	return ansi.Truncate(fmt.Sprintf(" %-2s %s%s%s", side, name, tail, strings.Repeat(" ", w)), w, "")
+}
+
+// abbrev shortens a team name to fit w cells: initials for a multi-word name
+// ("Lynn Vision Gaming" → "LVG"), otherwise a cut with "…".
+func abbrev(name string, w int) string {
+	if words := strings.Fields(name); len(words) > 1 {
+		var b strings.Builder
+		for _, wd := range words {
+			b.WriteString(strings.ToUpper(string([]rune(wd)[:1])))
+		}
+		if b.Len() <= w {
+			return b.String()
+		}
+	}
+	return strings.TrimRight(ansi.Truncate(name, w-1, ""), " ") + "…"
 }
 
 func gunName(g string) string {

@@ -19,7 +19,7 @@ func TestRoundStatusAboveMap(t *testing.T) {
 	if h := plain(roundStatus(st)); h != "R22 1:18   BOMB 32s · DEFUSING 4.2s " {
 		t.Fatalf("%q", h)
 	}
-	if h := plain(header(st)); h != " Lynn Vision Gaming 9 : 12 Ninjas in Pyjamas  Ancient" {
+	if h := plain(header(st, 200)); h != " Lynn Vision Gaming 9 : 12 Ninjas in Pyjamas  Ancient" {
 		t.Fatalf("%q", h)
 	}
 	st.Over = true
@@ -71,5 +71,25 @@ func TestPauseBadge(t *testing.T) {
 	st = &gotv.State{Round: 9, SecondsLeft: -1, Paused: true, Pause: "PAUSED", PauseLeft: -1}
 	if h := plain(roundStatus(st)); !strings.Contains(h, " PAUSED ") {
 		t.Fatalf("%q: an admin pause has no clock but is shown", h)
+	}
+}
+
+func TestHeaderAbbrev(t *testing.T) {
+	st := &gotv.State{Map: "de_ancient"}
+	st.CT.Name, st.T.Name = "Lynn Vision Gaming", "Ninjas in Pyjamas"
+	if h := plain(header(st, 30)); h != " LVG 0 : 0 NIP  Ancient" {
+		t.Fatalf("got %q", h)
+	}
+}
+
+func TestAbbrev(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		w    int
+		want string
+	}{{"Lynn Vision Gaming", 10, "LVG"}, {"Ninjas in Pyjamas", 8, "NIP"}, {"PVISION", 5, "PVIS…"}, {"Lynn Vision Gaming", 2, "L…"}} {
+		if got := abbrev(c.in, c.w); got != c.want {
+			t.Errorf("abbrev(%q,%d)=%q want %q", c.in, c.w, got, c.want)
+		}
 	}
 }
