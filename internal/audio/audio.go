@@ -135,7 +135,7 @@ func (p *Player) spawn() {
 			return
 		}
 		p.mu.Lock()
-		if !p.muted {
+		if !p.muted && !p.closed {
 			p.play(time.Now())
 		}
 		p.mu.Unlock()
@@ -161,10 +161,10 @@ func (p *Player) spawn() {
 			}
 		}
 		fetch.Wait()
-		p.mu.Lock()
-		p.stopPlay()
-		p.mu.Unlock()
-		if ctx.Err() == nil { // ended by itself: say why
+		if ctx.Err() == nil { // ended by itself: stop playing and say why (when stopped, Stop did it)
+			p.mu.Lock()
+			p.stopPlay()
+			p.mu.Unlock()
 			msg := firstLine(strings.TrimSpace(fetchErr.String()))
 			if msg == "" {
 				msg = "stream ended"
@@ -282,13 +282,17 @@ func (p *Player) SetDelay(d time.Duration) {
 func (p *Player) Delay() time.Duration { return time.Duration(p.delay.Load()) }
 
 // Stop ends playback.
+// Stop ends playback. It only cancels: the processes are killed by their
+// contexts and wound down in the background, so the caller (the UI) never waits.
 func (p *Player) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.closed = true
-	p.stopPlay()
+	if p.pstop != nil {
+		p.pstop()
+		p.pstop = nil
+	}
 	p.stop()
-	waitFor(p.done)
 }
 
 func waitFor(done chan struct{}) {
