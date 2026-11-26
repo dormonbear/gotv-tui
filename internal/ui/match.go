@@ -585,7 +585,7 @@ func (m *matchModel) view() string {
 	if m.notice != "" { // first, so a narrow footer keeps it
 		footer = " " + m.notice + " ·" + footer
 	}
-	footer = dim(ansi.Truncate(footer, m.w, ""))
+	footer = dim(marquee(footer, m.w, time.Now()))
 	if m.sound.typing() {
 		footer = m.soundFooter()
 	}
@@ -626,7 +626,7 @@ func (m *matchModel) directorSwitch(width int) string {
 		sw = switchFocus.Render(" ◎ FOLLOWING " + m.focusName() + " ")
 		m.switchW = 0 // following, not the director: the bar isn't a switch now
 		m.badgeX = m.switchX + lipgloss.Width(sw) + 2
-		return ansi.Truncate(pre+sw+note, width, "")
+		return fitTail(pre+sw+note, m.streamClock(), width)
 	}
 	if m.directing {
 		sw = switchOn.Render(" ● DIRECTOR ON ")
@@ -635,7 +635,7 @@ func (m *matchModel) directorSwitch(width int) string {
 	}
 	m.switchW = lipgloss.Width(sw)
 	m.badgeX = m.switchX + m.switchW + 2
-	return ansi.Truncate(pre+sw+note, width, "")
+	return fitTail(pre+sw+note, m.streamClock(), width)
 }
 
 var waitQuips = []string{
@@ -683,4 +683,14 @@ func (m *matchModel) withBadge(row string) string {
 	}
 	row = ansi.Truncate(row, room, "")
 	return row + strings.Repeat(" ", room-ansi.StringWidth(row)) + badge
+}
+
+// fitTail keeps head fixed (it holds click targets) and scrolls tail in the rest
+// of width when it doesn't fit.
+func fitTail(head, tail string, width int) string {
+	room := width - ansi.StringWidth(head)
+	if room <= 0 {
+		return ansi.Truncate(head, width, "")
+	}
+	return head + marquee(tail, room, time.Now())
 }

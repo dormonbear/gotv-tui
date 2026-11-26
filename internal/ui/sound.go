@@ -329,7 +329,7 @@ func (m *matchModel) soundBadge() string {
 		badge = switchOff.Render(fmt.Sprintf(" ✕ MUTED %s ", strings.ToUpper(s.src)))
 	}
 	m.badgeW = lipgloss.Width(badge)
-	return badge + m.streamClock()
+	return badge
 }
 
 // streamClock is what the stream shows as heard now ("STREAM R18 0:58"), next to
