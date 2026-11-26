@@ -18,6 +18,7 @@ var helpKeys = [][2]string{
 	{"0", "whole map"},
 	{"v", "audio: pick Huya / Twitch / Bilibili / URL, then the room (↑/↓: past rooms)"},
 	{"a", "auto sync on/off (reads the stream's round clock)"},
+	{"click ♪", "mute / unmute the audio (the badge above the map)"},
 	{"t", "tap sync: press as a kill is called"},
 	{"[ ] · { }", "audio offset ±1 s · ±0.1 s"},
 	{"u", "update, when a new version is out"},

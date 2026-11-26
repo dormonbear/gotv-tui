@@ -34,10 +34,11 @@ type clockSample struct {
 type clockReadMsg audio.ClockRead
 
 const (
-	syncKeep   = 8 * time.Minute // a stream can lag the relay by minutes, either way
-	syncWindow = 1.0             // seconds of spread allowed among agreeing reads
-	syncRounds = 2               // rounds the agreeing reads must span
-	syncReads  = 4
+	syncKeep       = 8 * time.Minute // a stream can lag the relay by minutes, either way
+	syncWindow     = 1.0             // seconds of spread allowed among agreeing reads
+	syncRounds     = 2               // rounds the agreeing reads must span
+	syncReads      = 4
+	syncKnownReads = 3 // reads that named their round: fewer will do
 )
 
 func (a *autoSync) stop() {
@@ -105,8 +106,7 @@ func (m *matchModel) onClockRead(r audio.ClockRead) {
 		m.status = fmt.Sprintf("auto sync: locked, offset %+.1fs", off)
 	}
 	if ok && math.Abs(off-m.sound.offset) >= 0.3 {
-		m.sound.offset = off
-		m.sound.apply()
+		m.setOffset(off)
 		m.status = fmt.Sprintf("auto sync: offset %+.1fs", off)
 	}
 }
@@ -180,9 +180,9 @@ func (a *autoSync) vote() (float64, bool) {
 			rival = w
 		}
 	}
-	settled := best.known && best.reads > rival.reads ||
+	settled := best.known && best.reads >= syncKnownReads && best.reads > rival.reads ||
 		best.rounds >= syncRounds && best.rounds > rival.rounds
-	if best.reads < syncReads || !settled {
+	if !settled || !best.known && best.reads < syncReads {
 		return 0, false
 	}
 	offs := make([]float64, 0, best.hi-best.lo)

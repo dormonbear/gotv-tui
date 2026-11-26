@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // roomHistory is each platform's rooms that played, newest first, kept across runs
@@ -31,11 +32,40 @@ func addRoom(platform, room string) {
 	h := loadRooms()
 	list := slices.DeleteFunc(slices.Clone(h[platform]), func(r string) bool { return r == room })
 	h[platform] = append([]string{room}, list...)[:min(roomsKept, len(list)+1)]
-	b, err := json.MarshalIndent(h, "", "  ")
+	writeJSON(roomsFile(), h)
+}
+
+// offsets remembers the audio offset per relay and stream ("<relay> <stream>"), so
+// reopening a pair starts lined up; ~/.config/gotv-tui/offsets.json.
+var offsetsFile = func() string { return filepath.Join(filepath.Dir(roomsFile()), "offsets.json") }
+
+func loadOffsets() map[string]float64 {
+	o := map[string]float64{}
+	if b, err := os.ReadFile(offsetsFile()); err == nil {
+		_ = json.Unmarshal(b, &o)
+	}
+	return o
+}
+
+func loadOffset(relay, stream string) (float64, bool) {
+	v, ok := loadOffsets()[relay+" "+stream]
+	return v, ok
+}
+
+func saveOffset(relay, stream string, v float64) {
+	if relay == "" || stream == "" || strings.HasPrefix(relay, DemoPrefix) {
+		return
+	}
+	o := loadOffsets()
+	o[relay+" "+stream] = v
+	writeJSON(offsetsFile(), o)
+}
+
+func writeJSON(file string, v any) {
+	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return
 	}
-	file := roomsFile()
 	_ = os.MkdirAll(filepath.Dir(file), 0o755)
 	if tmp := file + ".tmp"; os.WriteFile(tmp, b, 0o644) == nil {
 		_ = os.Rename(tmp, file)

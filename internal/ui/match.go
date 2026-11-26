@@ -100,18 +100,19 @@ type matchModel struct {
 	parked       [2]parked // each level's view while the camera drives the other
 	drag         drag
 	// director: picks the shot; the camera follows it while directing
-	dir       *director.Director
-	directing bool
-	shot      *director.Shot
-	soon      []playback.Soon[gotv.Event] // events queued ahead of the screen
-	settling  bool                        // camera still moving to the last shot
-	vel       [3]float64                  // camera spring velocity: x, y, log zoom
-	switchX   int                         // screen cell where the director switch starts
-	switchY   int
-	panelW    int            // width of the scoreboard (clicks there select players)
-	switchW   int            // its width; it sits on screen row 0
-	focus     string         // followed player (lowercase), "" for none
-	rowPlayer map[int]string // scoreboard screen row -> player (lowercase)
+	dir            *director.Director
+	directing      bool
+	shot           *director.Shot
+	soon           []playback.Soon[gotv.Event] // events queued ahead of the screen
+	settling       bool                        // camera still moving to the last shot
+	vel            [3]float64                  // camera spring velocity: x, y, log zoom
+	switchX        int                         // screen cell where the director switch starts
+	switchY        int
+	panelW         int            // width of the scoreboard (clicks there select players)
+	switchW        int            // its width; it sits on screen row 0
+	badgeX, badgeW int            // the audio badge on the switch row (a click mutes)
+	focus          string         // followed player (lowercase), "" for none
+	rowPlayer      map[int]string // scoreboard screen row -> player (lowercase)
 	// kitty graphics: images go to out (nil: draw the map in half blocks)
 	out          *term.LockedFile // image output (nil: text map)
 	gfx          term.Graphics
@@ -624,6 +625,7 @@ func (m *matchModel) directorSwitch(width int) string {
 	if m.focus != "" {
 		sw = switchFocus.Render(" ◎ FOLLOWING " + m.focusName() + " ")
 		m.switchW = 0 // following, not the director: the bar isn't a switch now
+		m.badgeX = m.switchX + lipgloss.Width(sw) + 2
 		return ansi.Truncate(pre+sw+note, width, "")
 	}
 	if m.directing {
@@ -632,6 +634,7 @@ func (m *matchModel) directorSwitch(width int) string {
 		sw = switchOff.Render(" ○ DIRECTOR OFF ")
 	}
 	m.switchW = lipgloss.Width(sw)
+	m.badgeX = m.switchX + m.switchW + 2
 	return ansi.Truncate(pre+sw+note, width, "")
 }
 

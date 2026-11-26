@@ -125,3 +125,44 @@ func TestRoomHistoryAndRestore(t *testing.T) {
 		t.Fatal("a new run restores nothing")
 	}
 }
+
+// An offset found for a relay and stream is used again the next time that pair is
+// opened (even after a restart); clicking the audio badge mutes and unmutes.
+func TestSavedOffsetAndMute(t *testing.T) {
+	dir := t.TempDir()
+	roomsFile = func() string { return filepath.Join(dir, "audio.json") }
+	startPlayer = func(string, func(string)) (*audio.Player, error) { return &audio.Player{}, nil }
+	defer func() { startPlayer = audio.Start }()
+
+	m := testMatch(false)
+	m.url = "https://relay.example/a"
+	m.sound.src = "huya 123321"
+	m.setOffset(-127.7) // as auto sync would
+	if off, ok := loadOffset("https://relay.example/a", "huya 123321"); !ok || off != -127.7 {
+		t.Fatalf("saved %v %v", off, ok)
+	}
+
+	n := testMatch(false) // a later run
+	n.url = "https://relay.example/a"
+	n.send = func(tea.Msg, bool) {}
+	n.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	n.update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")}) // Huya
+	n.sound.input.SetValue("123321")
+	n.update(tea.KeyMsg{Type: tea.KeyEnter})
+	if n.sound.offset != -127.7 {
+		t.Fatalf("reopened pair starts at %v, want the saved -127.7", n.sound.offset)
+	}
+
+	n.view()
+	click := func() {
+		n.mouse(tea.MouseMsg{X: n.badgeX + 1, Y: n.switchY, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	}
+	click()
+	if !n.sound.muted || !strings.Contains(n.soundBadge(), "MUTED") {
+		t.Fatal("clicking the badge mutes")
+	}
+	click()
+	if n.sound.muted {
+		t.Fatal("clicking again unmutes")
+	}
+}

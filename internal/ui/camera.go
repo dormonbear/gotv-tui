@@ -232,6 +232,12 @@ type drag struct {
 const dragStart = 1.0
 
 func (m *matchModel) mouse(e tea.MouseMsg) tea.Cmd {
+	if e.Action == tea.MouseActionPress && e.Button == tea.MouseButtonLeft {
+		if x, y := m.pointer(e); int(y) == m.switchY && m.badgeW > 0 && int(x) >= m.badgeX && int(x) < m.badgeX+m.badgeW {
+			m.toggleMute() // the audio badge, even before the map loads
+			return nil
+		}
+	}
 	if m.assets == nil {
 		return nil
 	}
